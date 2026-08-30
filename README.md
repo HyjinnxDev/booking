@@ -38,7 +38,8 @@ See `.env.example`. All are required.
 
 ## Setup
 
-1. **Supabase project** → run `supabase/migrations/0001_init.sql` in the SQL editor.
+1. **Supabase project** → run the files in `supabase/migrations/` in order (SQL
+   editor, or `supabase db push`).
 2. **Supabase Auth** → Providers → Email: enable. For the fastest v1, turn
    **Confirm email** OFF. (If left on, `/auth/callback` handles the link and you
    must add `https://bookings.technicourt.com/auth/callback` to
