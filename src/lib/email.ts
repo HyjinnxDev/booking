@@ -6,8 +6,16 @@ import { BRAND, SITE_URL } from './config';
 
 const FROM = EMAIL_FROM || `${BRAND} <bookings@technicourt.com>`;
 
-function client(): Resend {
-  return new Resend(RESEND_API_KEY);
+const resend = new Resend(RESEND_API_KEY);
+
+type SendArgs = Parameters<typeof resend.emails.send>[0];
+
+// Resend returns { error } instead of throwing; surface it so callers' try/catch
+// logs it and cron doesn't mark a failed reminder as sent.
+async function send(args: SendArgs) {
+  const { data, error } = await resend.emails.send(args);
+  if (error) throw new Error(`Resend: ${error.name} — ${error.message}`);
+  return data;
 }
 
 export interface BookingMail {
@@ -43,7 +51,7 @@ function shell(body: string): string {
 
 export async function sendConfirmation(m: BookingMail) {
   const ics = bookingIcs(event(m), { method: 'REQUEST' });
-  return client().emails.send({
+  return send({
     from: FROM,
     to: m.to,
     subject: `Booking confirmed — ${fmtLong(m.startAt)}`,
@@ -60,7 +68,7 @@ export async function sendConfirmation(m: BookingMail) {
 
 export async function sendCancellation(m: BookingMail) {
   const ics = bookingIcs({ ...event(m), sequence: 1 }, { method: 'CANCEL' });
-  return client().emails.send({
+  return send({
     from: FROM,
     to: m.to,
     subject: `Booking cancelled — ${fmtLong(m.startAt)}`,
@@ -75,7 +83,7 @@ export async function sendCancellation(m: BookingMail) {
 
 export async function sendReminder(m: BookingMail) {
   const ics = bookingIcs(event(m), { method: 'REQUEST' });
-  return client().emails.send({
+  return send({
     from: FROM,
     to: m.to,
     subject: `Reminder — tennis tomorrow, ${fmtLong(m.startAt)}`,
