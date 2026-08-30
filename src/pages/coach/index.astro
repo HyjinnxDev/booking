@@ -1,0 +1,61 @@
+---
+import Base from '../../layouts/Base.astro';
+import { fmtLong } from '../../lib/format';
+import { SITE_URL } from '../../lib/config';
+
+const { locals } = Astro;
+const coachId = locals.user!.id;
+
+const { data: rows } = await locals.supabase
+  .from('bookings')
+  .select('id, start_at, end_at, notes, status, client:client_id ( name, email, phone )')
+  .eq('coach_id', coachId)
+  .eq('status', 'confirmed')
+  .gte('start_at', new Date().toISOString())
+  .order('start_at', { ascending: true });
+
+const { data: me } = await locals.supabase
+  .from('profiles')
+  .select('cal_token')
+  .eq('id', coachId)
+  .single();
+
+const bookings = rows ?? [];
+const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
+const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+---
+
+<Base title="Coach dashboard">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Upcoming bookings</h1>
+    <a href="/coach/availability" class="text-sm underline">Edit availability</a>
+  </div>
+
+  {
+    bookings.length === 0 ? (
+      <p class="mt-4 text-neutral-600">No upcoming bookings.</p>
+    ) : (
+      <ul class="mt-4 divide-y divide-neutral-200 rounded border border-neutral-200 bg-white">
+        {bookings.map((b: any) => (
+          <li class="px-4 py-3">
+            <p class="font-medium">{fmtLong(b.start_at)}</p>
+            <p class="text-sm text-neutral-600">
+              {b.client?.name || 'Client'} · {b.client?.email}
+              {b.client?.phone ? ` · ${b.client.phone}` : ''}
+            </p>
+            {b.notes && <p class="mt-1 text-sm text-neutral-500">{b.notes}</p>}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  <h2 class="mt-8 text-sm font-semibold text-neutral-500 uppercase">Calendar subscription</h2>
+  <p class="mt-2 text-sm text-neutral-600">
+    Add this read-only feed to Apple or Google Calendar. It updates automatically; keep the URL private.
+  </p>
+  <div class="mt-2 flex flex-col gap-2">
+    <code class="block overflow-x-auto rounded bg-neutral-100 px-3 py-2 text-xs">{feedUrl}</code>
+    <a href={webcalUrl} class="w-fit rounded border border-neutral-900 px-3 py-1 text-sm">Subscribe in calendar app</a>
+  </div>
+</Base>

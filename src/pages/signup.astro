@@ -1,0 +1,61 @@
+---
+import Base from '../layouts/Base.astro';
+import { SITE_URL } from '../lib/config';
+
+let error = '';
+let checkEmail = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+  const name = String(form.get('name') ?? '').trim();
+
+  if (password.length < 8) {
+    error = 'Password must be at least 8 characters.';
+  } else {
+    const { data, error: e } = await Astro.locals.supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name }, emailRedirectTo: `${SITE_URL}/auth/callback` },
+    });
+    if (e) error = e.message;
+    else if (data.session) return Astro.redirect(Astro.url.searchParams.get('next') || '/');
+    else checkEmail = true;
+  }
+}
+---
+
+<Base title="Sign up">
+  <h1 class="text-xl font-semibold">Create an account</h1>
+  {error && <p class="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+  {
+    checkEmail ? (
+      <p class="mt-4 rounded bg-green-50 px-3 py-2 text-sm text-green-800">
+        Check your email for a confirmation link, then sign in.
+      </p>
+    ) : (
+      <form method="POST" class="mt-4 flex max-w-sm flex-col gap-3">
+        <label class="text-sm">
+          Name
+          <input type="text" name="name" required autocomplete="name"
+            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
+        </label>
+        <label class="text-sm">
+          Email
+          <input type="email" name="email" required autocomplete="email"
+            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
+        </label>
+        <label class="text-sm">
+          Password
+          <input type="password" name="password" required minlength="8" autocomplete="new-password"
+            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
+        </label>
+        <button class="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Sign up</button>
+      </form>
+    )
+  }
+  <p class="mt-4 text-sm text-neutral-600">
+    Already have an account? <a href="/login" class="underline">Sign in</a>
+  </p>
+</Base>

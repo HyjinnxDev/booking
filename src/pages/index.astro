@@ -1,0 +1,98 @@
+---
+import Base from '../layouts/Base.astro';
+import { getPrimaryCoach } from '../lib/coach';
+import { getAvailableSlots } from '../lib/slots';
+import { fmtTime, todayStr, addDaysStr } from '../lib/format';
+import { BOOKING_WINDOW_DAYS } from '../lib/config';
+
+const { locals, url } = Astro;
+const today = todayStr();
+const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+
+let date = url.searchParams.get('date') || today;
+if (date < today) date = today;
+if (date > maxDate) date = maxDate;
+
+const errorCode = url.searchParams.get('error');
+const booked = url.searchParams.get('booked') === '1';
+
+const coach = await getPrimaryCoach();
+const slots = coach ? await getAvailableSlots(coach.id, date) : [];
+
+const errors: Record<string, string> = {
+  slot_taken: 'Sorry, that slot was just taken. Pick another.',
+  past: 'That time has already passed.',
+  unknown: 'Something went wrong. Please try again.',
+};
+---
+
+<Base title="Book a session">
+  <h1 class="text-xl font-semibold">Book a session{coach ? ` with ${coach.name}` : ''}</h1>
+
+  {booked && <p class="mt-3 rounded bg-green-50 px-3 py-2 text-sm text-green-800">Booked! Check your email for confirmation.</p>}
+  {errorCode && <p class="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{errors[errorCode] ?? errors.unknown}</p>}
+
+  {
+    !coach ? (
+      <p class="mt-4 text-neutral-600">No coach is available for booking yet.</p>
+    ) : (
+      <>
+        <form method="GET" class="mt-4">
+          <label class="text-sm">
+            Date
+            <input
+              type="date"
+              name="date"
+              value={date}
+              min={today}
+              max={maxDate}
+              onchange="this.form.submit()"
+              class="mt-1 block rounded border border-neutral-300 px-3 py-2"
+            />
+          </label>
+          <noscript><button class="mt-2 rounded border px-3 py-1 text-sm">Show slots</button></noscript>
+        </form>
+
+        {
+          slots.length === 0 ? (
+            <p class="mt-6 text-neutral-600">No available slots on this date.</p>
+          ) : !locals.user ? (
+            <div class="mt-6">
+              <p class="text-neutral-600">
+                <a href={`/login?next=${encodeURIComponent(`/?date=${date}`)}`} class="underline">Sign in</a> to book a slot.
+              </p>
+              <ul class="mt-3 flex flex-wrap gap-2">
+                {slots.map((s) => (
+                  <li class="rounded border border-neutral-300 px-3 py-2 text-sm text-neutral-400">{fmtTime(s.startAt)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <form method="POST" action="/api/bookings" class="mt-6">
+              <input type="hidden" name="date" value={date} />
+              <label class="block text-sm">
+                Notes for the coach (optional)
+                <textarea name="notes" rows="2" maxlength="500"
+                  class="mt-1 block w-full rounded border border-neutral-300 px-3 py-2"></textarea>
+              </label>
+              <fieldset class="mt-4">
+                <legend class="text-sm font-medium">Available times — pick one to book</legend>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {slots.map((s) => (
+                    <button
+                      name="start_at"
+                      value={s.startAt}
+                      class="rounded border border-neutral-900 px-3 py-2 text-sm font-medium hover:bg-neutral-900 hover:text-white"
+                    >
+                      {fmtTime(s.startAt)}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </form>
+          )
+        }
+      </>
+    )
+  }
+</Base>
