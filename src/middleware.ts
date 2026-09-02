@@ -16,7 +16,7 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   if (user) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, role, name, email')
+      .select('id, role, name, email, phone')
       .eq('id', user.id)
       .maybeSingle();
     ctx.locals.profile = (data as App.Locals['profile']) ?? null;

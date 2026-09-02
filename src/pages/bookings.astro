@@ -1,36 +1,84 @@
 ---
 import Base from '../layouts/Base.astro';
-import { fmtLong } from '../lib/format';
+import { fmtLong, fmtPrice } from '../lib/format';
 
-const { locals, url } = Astro;
+const { locals, url, request } = Astro;
 const user = locals.user!; // middleware guarantees auth on /bookings
+const supabase = locals.supabase;
 
-const { data: rows } = await locals.supabase
+let profileError = '';
+if (request.method === 'POST') {
+  const form = await request.formData();
+  if (form.get('action') === 'profile') {
+    const name = String(form.get('name') ?? '').trim().slice(0, 80);
+    const phone = String(form.get('phone') ?? '').trim().slice(0, 40);
+    const { error } = await supabase.from('profiles').update({ name, phone: phone || null }).eq('id', user.id);
+    if (error) profileError = 'Could not save your details.';
+    else return Astro.redirect('/bookings?saved=1');
+  }
+}
+
+const { data: rows } = await supabase
   .from('bookings')
-  .select('id, start_at, end_at, status, notes, class_occurrence_id')
+  .select(
+    `id, start_at, end_at, status, notes, price_cents, payment_status, class_occurrence_id,
+     variant:session_variant_id ( name, session_types ( id, name ) )`,
+  )
   .eq('client_id', user.id)
   .order('start_at', { ascending: true });
 
 const now = Date.now();
-const bookings = rows ?? [];
+const bookings = (rows ?? []) as any[];
 const upcoming = bookings.filter((b) => new Date(b.start_at).getTime() > now && b.status === 'confirmed');
-const past = bookings.filter((b) => !(new Date(b.start_at).getTime() > now && b.status === 'confirmed'));
+const past = bookings
+  .filter((b) => !(new Date(b.start_at).getTime() > now && b.status === 'confirmed'))
+  .reverse(); // most recent first
 
-const cancelled = url.searchParams.get('cancelled') === '1';
-const booked = url.searchParams.get('booked') === '1';
-const rescheduled = url.searchParams.get('rescheduled') === '1';
+const label = (b: any) =>
+  [b.variant?.session_types?.name ?? 'Session', b.variant?.name].filter(Boolean).join(' · ');
+
+const flash =
+  url.searchParams.get('booked') === '1'
+    ? 'Booked. Confirmation is on its way.'
+    : url.searchParams.get('rescheduled') === '1'
+      ? 'Booking moved. A calendar update is on its way.'
+      : url.searchParams.get('cancelled') === '1'
+        ? 'Booking cancelled.'
+        : url.searchParams.get('saved') === '1'
+          ? 'Details saved.'
+          : '';
+
+const field = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none';
+const chip = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink';
 ---
 
 <Base title="My bookings">
   <h1 class="text-3xl font-extrabold sm:text-4xl">My bookings</h1>
 
-  {
-    booked && (
-      <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">Booked. Confirmation is on its way.</p>
-    )
-  }
-  {cancelled && <p class="mt-5 border-l-2 border-ink bg-white px-4 py-3 text-sm">Booking cancelled.</p>}
-  {rescheduled && <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">Booking moved. A calendar update is on its way.</p>}
+  {flash && <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">{flash}</p>}
+
+  <details class="mt-6 rounded-xl border border-line bg-white">
+    <summary class="cursor-pointer list-none px-4 py-3 text-sm font-semibold">
+      Your details
+      <span class="ml-1 font-normal text-ink-soft">
+        · {locals.profile?.name || 'no name'}{locals.profile?.phone ? ` · ${locals.profile.phone}` : ''}
+      </span>
+    </summary>
+    <form method="POST" class="flex flex-col gap-3 border-t border-line px-4 py-4 sm:flex-row sm:items-end">
+      <input type="hidden" name="action" value="profile" />
+      <label class="flex-1 text-sm">
+        <span class="text-ink-soft">Name</span>
+        <input name="name" value={locals.profile?.name ?? ''} autocomplete="name" class={field} />
+      </label>
+      <label class="flex-1 text-sm">
+        <span class="text-ink-soft">Phone</span>
+        <input name="phone" type="tel" value={locals.profile?.phone ?? ''} autocomplete="tel" class={field} />
+      </label>
+      <p class="text-xs text-ink-soft sm:pb-2">{user.email}</p>
+      <button class="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90">Save</button>
+    </form>
+    {profileError && <p class="border-t border-line px-4 py-2 text-sm text-red-600">{profileError}</p>}
+  </details>
 
   <p class="mt-8 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming</p>
   {
@@ -41,23 +89,24 @@ const rescheduled = url.searchParams.get('rescheduled') === '1';
     ) : (
       <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
         {upcoming.map((b) => (
-          <li class="flex items-center justify-between gap-4 px-4 py-4">
+          <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
             <div>
               <p class="tnum font-display font-bold">{fmtLong(b.start_at)}</p>
+              <p class="mt-0.5 text-sm text-ink-soft">
+                {label(b)} · {fmtPrice(b.price_cents)}
+                {b.payment_status === 'unpaid' && ' · pay in person'}
+              </p>
               {b.notes && <p class="mt-0.5 text-sm text-ink-soft">{b.notes}</p>}
             </div>
             <div class="flex shrink-0 items-center gap-2">
               {!b.class_occurrence_id && (
-                <a
-                  href={`/m/${b.id}?reschedule=1`}
-                  class="rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink"
-                >
+                <a href={`/m/${b.id}?reschedule=1`} class={chip}>
                   Reschedule
                 </a>
               )}
               <form method="POST" action={`/m/${b.id}`} onsubmit="return confirm('Cancel this booking?')">
                 <input type="hidden" name="action" value="cancel" />
-                <button class="rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink">Cancel</button>
+                <button class={chip}>Cancel</button>
               </form>
             </div>
           </li>
@@ -70,13 +119,26 @@ const rescheduled = url.searchParams.get('rescheduled') === '1';
     past.length > 0 && (
       <>
         <p class="mt-10 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Past &amp; cancelled</p>
-        <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white text-ink-soft">
+        <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
           {past.map((b) => (
-            <li class="flex items-center justify-between gap-4 px-4 py-3">
-              <p class="tnum text-sm">{fmtLong(b.start_at)}</p>
-              <span class="text-[11px] font-semibold uppercase tracking-wide">
-                {b.status === 'cancelled' ? 'cancelled' : 'done'}
-              </span>
+            <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div class="text-ink-soft">
+                <p class="tnum text-sm">{fmtLong(b.start_at)}</p>
+                <p class="text-xs">
+                  {label(b)} · {fmtPrice(b.price_cents)}
+                  {b.payment_status === 'paid' && ' · paid'}
+                </p>
+              </div>
+              <div class="flex items-center gap-3">
+                {b.status !== 'cancelled' && b.variant?.session_types?.id && (
+                  <a href={`/s/${b.variant.session_types.id}`} class={chip}>
+                    Book again
+                  </a>
+                )}
+                <span class="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                  {b.status === 'cancelled' ? 'cancelled' : 'done'}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

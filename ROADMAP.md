@@ -48,8 +48,10 @@ Stripe/online payments deferred by request — still parked in Tier 0.
    with a flash, and the client is emailed. Verified E2E.
    *Follow-ups:* free-form time / double-book override (picker is still open-slots only,
    ≥2h out); managing past bookings needs the dashboard to list them.
-4. [ ] **Customer account area** — real profile edit, full history, one-click rebook,
-   receipts. `/bookings` is thin.
+4. [x] **Customer account area** — `/bookings` now carries a collapsible "Your details"
+   (name + phone edit, RLS-scoped update on `profiles`), every row shows session type /
+   variant / price / paid status, and completed appointments get a "Book again" link to
+   the session-type page. Verified E2E. *Later:* email change (auth-managed), PDF receipts.
 5. [ ] **Intake forms / booking questions** — per-service custom fields captured at
    booking, shown on the roster (injuries, level, waiver tick).
 6. [ ] **Packages / class passes** — buy N sessions, redeem at booking, balance on the
