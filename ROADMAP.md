@@ -42,8 +42,12 @@ Stripe/online payments deferred by request — still parked in Tier 0.
    and from `/bookings`. Replaces `/reschedule` and `/api/bookings`. Verified E2E
    (token cancel with no session, reschedule, not-found state). Any token holder — incl.
    staff — can manage, which also covers most of item 3.
-3. [ ] **Coach/admin: move any booking from the dashboard** — inline reschedule/edit on
-   the coach calendar (the `/m/<id>` link already lets staff act on a client's behalf).
+3. [x] **Coach/admin: manage any booking from the dashboard** — "Manage" link on every
+   appointment + class-roster row → `/m/<id>`. Staff bypass the notice-window and
+   past-session locks (field the phone call, clean up a no-show), land back on `/coach`
+   with a flash, and the client is emailed. Verified E2E.
+   *Follow-ups:* free-form time / double-book override (picker is still open-slots only,
+   ≥2h out); managing past bookings needs the dashboard to list them.
 4. [ ] **Customer account area** — real profile edit, full history, one-click rebook,
    receipts. `/bookings` is thin.
 5. [ ] **Intake forms / booking questions** — per-service custom fields captured at

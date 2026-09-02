@@ -28,7 +28,13 @@ const { data: booking } = await db
 
 const done = url.searchParams.get('done'); // 'cancelled' | 'rescheduled' | 'booked'
 const coach = await getPrimaryCoach();
+const isStaff = locals.profile?.role === 'coach' || locals.profile?.role === 'admin';
 const backToApp = !!locals.user;
+
+// Where to send a logged-in user after an action. Staff manage clients' bookings,
+// so they go back to the dashboard, not their own (empty) bookings list.
+const afterAction = (verb: 'cancelled' | 'rescheduled') =>
+  isStaff ? `/coach?${verb}=1` : backToApp ? `/bookings?${verb}=1` : `/m/${id}?done=${verb}`;
 
 const isAppointment = booking ? !booking.class_occurrence_id && !!booking.session_variant_id : false;
 const variant = isAppointment ? await getVariant(booking!.session_variant_id!) : null;
@@ -38,8 +44,10 @@ const past = booking ? new Date(booking.start_at).getTime() <= Date.now() : true
 const noticeLocked = booking
   ? new Date(booking.start_at).getTime() <= Date.now() + MIN_NOTICE_MIN * 60_000
   : true;
-const canCancel = !!booking && !cancelled && !past;
-const canReschedule = !!booking && isAppointment && !!variant && !cancelled && !noticeLocked;
+// Staff bypass the "too close / already passed" locks — they field the phone call
+// at 9am to move a 10am booking, or clean up a no-show.
+const canCancel = !!booking && !cancelled && (isStaff || !past);
+const canReschedule = !!booking && isAppointment && !!variant && !cancelled && (isStaff || !noticeLocked);
 
 const today = todayStr();
 const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
@@ -87,7 +95,7 @@ if (booking && request.method === 'POST' && !cancelled) {
           console.error('cancellation email failed', e);
         }
       }
-      return redirect(backToApp ? '/bookings?cancelled=1' : `/m/${booking.id}?done=cancelled`);
+      return redirect(afterAction('cancelled'));
     }
     error = 'That booking could not be cancelled.';
   }
@@ -129,7 +137,7 @@ if (booking && request.method === 'POST' && !cancelled) {
             console.error('reschedule email failed', err);
           }
         }
-        return redirect(backToApp ? '/bookings?rescheduled=1' : `/m/${booking.id}?done=rescheduled`);
+        return redirect(afterAction('rescheduled'));
       }
     }
   }
@@ -146,7 +154,11 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
 ---
 
 <Base title={title}>
-  {backToApp && <a href="/bookings" class="text-sm text-ink-soft hover:text-ink">← My bookings</a>}
+  {backToApp && (
+    <a href={isStaff ? '/coach' : '/bookings'} class="text-sm text-ink-soft hover:text-ink">
+      ← {isStaff ? 'Dashboard' : 'My bookings'}
+    </a>
+  )}
 
   {
     !booking ? (
@@ -199,10 +211,13 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
         </div>
 
         {
-          !cancelled && (past ? (
+          !cancelled && (past && !isStaff ? (
             <p class="mt-6 text-sm text-ink-soft">This session has passed.</p>
           ) : (
             <div class="mt-6 flex flex-wrap gap-3">
+              {past && isStaff && (
+                <span class="w-full text-xs text-ink-soft">This session has already passed.</span>
+              )}
               {isAppointment &&
                 (canReschedule ? (
                   <a
@@ -211,7 +226,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                   >
                     Reschedule
                   </a>
-                ) : (
+                ) : isStaff ? null : (
                   <span class="text-sm text-ink-soft">Too close to the session to reschedule online — contact {coach?.name ?? 'your coach'}.</span>
                 ))}
               {canCancel && (
