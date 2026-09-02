@@ -34,7 +34,7 @@ See `.env.example`. All are required.
 | `PUBLIC_SUPABASE_URL` | client + server | Supabase project URL |
 | `PUBLIC_SUPABASE_ANON_KEY` | client + server | Supabase anon key |
 | `PUBLIC_SITE_URL` | client + server | `https://bookings.technicourt.com` — used in emails + ICS feed URLs |
-| `PUBLIC_BUSINESS_TZ` | client + server | IANA tz, e.g. `Australia/Sydney`. Slot generation + display. |
+| `PUBLIC_BUSINESS_TZ` | client + server | IANA tz, e.g. `Australia/Adelaide`. Slot generation + display. |
 | `SUPABASE_SERVICE_ROLE_KEY` | server | Bypasses RLS. Slot computation, ICS feed, cron. |
 | `RESEND_API_KEY` | server | Resend API key |
 | `EMAIL_FROM` | server | `TechniCourt <bookings@technicourt.com>` — domain must be verified in Resend |

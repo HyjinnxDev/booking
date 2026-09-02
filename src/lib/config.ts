@@ -1,7 +1,7 @@
 // Business config. All timestamps in the DB are UTC; these only affect display
 // and slot generation.
 
-export const BUSINESS_TZ = import.meta.env.PUBLIC_BUSINESS_TZ || 'Australia/Sydney';
+export const BUSINESS_TZ = import.meta.env.PUBLIC_BUSINESS_TZ || 'Australia/Adelaide';
 export const SITE_URL = (import.meta.env.PUBLIC_SITE_URL || 'https://bookings.technicourt.com').replace(/\/$/, '');
 
 // Grid granularity for appointment slots. A booked variant of duration D
