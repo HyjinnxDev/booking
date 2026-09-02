@@ -25,6 +25,20 @@ Vercel at `bookings.technicourt.com`.
 - Confirmation + cancellation email, each with an `.ics` attachment
 - `/api/cron/reminders` — emails reminders for bookings in the next 24h
 
+## Since v1 (branch `feature/platform-buildout`)
+
+- `org_id` on every table (single-org seam for white-label; RLS not scoped yet)
+- **Reschedule** appointments in place (`/reschedule`) — re-sends the `.ics` as an update
+- Class cancellation now **emails every attendee**
+- **Min notice** (`MIN_NOTICE_MIN`, 120 min) enforced server-side, not just hidden in the UI
+- **Multiple locations** — `/coach/locations`, each session type has a location
+  (per-location timezone is stored but slot generation still uses `PUBLIC_BUSINESS_TZ`)
+- **Class waitlist** — join a full class; a freed seat emails every waitlister
+- Second cron `/api/cron/topup` — extends weekly class series to `SERIES_WEEKS` ahead
+- `resources` (courts) table + conflict constraints exist but aren't wired to booking yet
+
+See `ROADMAP.md` for what's next and the open flags.
+
 ## Environment variables
 
 See `.env.example`. All are required.
@@ -85,7 +99,7 @@ Node ≥ 22.19 (Astro engine requirement).
   and the coach ticks "Mark paid" (cash/card in person). Price-0 → `'free'`.
 - Class capacity is enforced by a `before insert` trigger that row-locks the
   occurrence; concurrent overfill / a client's second seat get SQLSTATE 23505.
-- Cancelling a class releases its seats but does **not** email attendees yet —
-  the coach works the roster. Wire class-aware email when it matters.
+- Cancelling a class (occurrence or series) releases seats **and emails every
+  confirmed attendee** (best-effort). Refunds still wait for Stripe.
 - Emails and the ICS feed are best-effort: a Resend failure is logged, not
   surfaced to the user, and never blocks a booking.
