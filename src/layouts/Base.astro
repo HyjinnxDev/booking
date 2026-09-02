@@ -4,8 +4,10 @@ import { BRAND } from '../lib/config';
 
 interface Props {
   title?: string;
+  /** Wider main column + tighter vertical padding — for the coach console. */
+  wide?: boolean;
 }
-const { title } = Astro.props;
+const { title, wide } = Astro.props;
 const { user, profile } = Astro.locals;
 const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
 const path = Astro.url.pathname;
@@ -73,7 +75,12 @@ const path = Astro.url.pathname;
       </nav>
     </header>
 
-    <main class="mx-auto w-full max-w-3xl flex-1 px-5 py-10 sm:py-14">
+    <main
+      class:list={[
+        'mx-auto w-full flex-1 px-5',
+        wide ? 'max-w-5xl py-7' : 'max-w-3xl py-10 sm:py-14',
+      ]}
+    >
       <slot />
     </main>
 

@@ -235,7 +235,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
               required
               value={values.name}
               autocomplete="name"
-              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+              class="field mt-1"
             />
           </label>
           <label class="text-sm">
@@ -246,7 +246,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
               required
               value={values.email}
               autocomplete="email"
-              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+              class="field mt-1"
             />
             <span class="mt-1 block text-xs text-ink-soft">
               Your confirmation goes here, and we'll set up an account so you can manage the booking.
@@ -260,7 +260,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
               name="phone"
               value={values.phone}
               autocomplete="tel"
-              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+              class="field mt-1"
             />
           </label>
         </>
@@ -286,14 +286,14 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
                 name={`intake:${f.label}`}
                 rows="2"
                 maxlength="1000"
-                class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+                class="field mt-1"
               />
             ) : (
               <input
                 type="text"
                 name={`intake:${f.label}`}
                 maxlength="1000"
-                class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+                class="field mt-1"
               />
             )}
           </label>
@@ -307,7 +307,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
           <span class="font-semibold">Payment</span>
           <select
             name="pass_id"
-            class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            class="field mt-1"
           >
             <option value="">{ctx.priceCents > 0 ? `Pay in person — ${fmtPrice(ctx.priceCents)}` : 'No payment needed'}</option>
             {myPasses.map((p) => (
@@ -328,7 +328,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
         rows="2"
         maxlength="500"
         placeholder="Injuries, focus areas, first lesson…"
-        class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 placeholder:text-ink-soft/60 focus:border-ink focus:outline-none"
+        class="field mt-1"
         set:text={values.notes}
       />
     </label>

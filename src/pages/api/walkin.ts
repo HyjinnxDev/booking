@@ -15,7 +15,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
   const form = await request.formData();
   const s = (k: string) => String(form.get(k) ?? '').trim();
-  const back = s('back') || '/coach/calendar';
+  const back = s('back') || '/coach';
   const bounce = (r: string) => redirect(`${back}${back.includes('?') ? '&' : '?'}walkin=${r}`);
 
   const variant = await getVariant(s('variant_id'));

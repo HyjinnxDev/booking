@@ -76,6 +76,22 @@ Stripe/online payments deferred by request — still parked in Tier 0.
     `current_org_id()`, org resolved from request host, column defaults dropped, a
     cross-tenant read test — is the multi-tenant switch-on; do it with a real 2nd tenant.
 
+## Coach console redesign (done)
+
+Full clean-and-condense pass on `/coach/*`:
+- Shared `Coach.astro` layout — one tab bar (Agenda · Sessions · Classes · Hours ·
+  Locations · Passes), wider column, tighter rhythm, no per-page "← Dashboard".
+- `Dashboard` + `Calendar` merged into **Agenda** (`/coach`) — day/week agenda, each
+  booking a one-line row that expands for contact + intake + actions. `/coach/calendar`
+  deleted; walk-in + ICS feed live on the Agenda.
+- **Sessions** and **Locations** are now read-rows that expand to edit (was: every
+  field always an open form).
+- **Hours** — 7 read rows + one "add hours" form (was: an empty add-form per day).
+- Shared primitives in `global.css` (`@layer components`): `.field` (one input style
+  incl. native date/time), `.btn` / `.btn-ghost` / `.btn-quiet` / `.btn-danger`,
+  `.card`, `.rowlist`, `.eyebrow`. Applied site-wide, incl. the `/s/[id]` + `/m/[id]`
+  date pickers.
+
 ## ⚠ Flags / roadblocks from round 1
 
 - **Vercel deploy** — RESOLVED for production. Round 1 was merged to `main` and deployed

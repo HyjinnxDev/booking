@@ -1,5 +1,5 @@
 ---
-import Base from '../../layouts/Base.astro';
+import Coach from '../../layouts/Coach.astro';
 import { SLOT_STEP_MIN } from '../../lib/config';
 
 const { locals, url } = Astro;
@@ -25,59 +25,60 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 const err = url.searchParams.get('error');
 const byDay = (wd: number) => (rules ?? []).filter((r) => r.weekday === wd);
 const hhmm = (t: string) => t.slice(0, 5);
-
-const inputCls = 'rounded-lg border border-line bg-white px-2 py-1.5 text-sm focus:border-ink focus:outline-none';
-const addBtn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:opacity-90';
 ---
 
-<Base title="Availability">
-  <a href="/coach" class="text-sm text-ink-soft hover:text-ink">← Dashboard</a>
-  <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Availability</h1>
-  <p class="mt-2 text-sm text-ink-soft">
-    Business timezone. Appointment start times step every {SLOT_STEP_MIN} minutes within these windows;
-    each session type's length is set on the <a href="/coach/services" class="underline underline-offset-2">Sessions</a> page.
-  </p>
-  {err && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{err}</p>}
+<Coach
+  title="Hours"
+  desc={`Business timezone. Appointment start times step every ${SLOT_STEP_MIN} minutes inside these windows; each session's length is set on the Sessions tab.`}
+>
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
 
-  <div class="mt-8 space-y-px overflow-hidden rounded-xl border border-line bg-line">
+  <div class="card rowlist">
     {
       DAYS.map((label, wd) => (
-        <div class="bg-paper p-4">
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p class="w-24 font-display font-bold">{label}</p>
-            <div class="flex flex-wrap gap-2">
-              {byDay(wd).map((r) => (
-                <span class="tnum inline-flex items-center gap-2 rounded-lg bg-white px-2.5 py-1 text-sm ring-1 ring-line">
-                  {hhmm(r.start_time)}–{hhmm(r.end_time)}
-                  <form method="POST" action="/api/availability">
-                    <input type="hidden" name="action" value="delete" />
-                    <input type="hidden" name="id" value={r.id} />
-                    <button class="text-ink-soft hover:text-ink" aria-label="Remove">×</button>
-                  </form>
-                </span>
-              ))}
-              {byDay(wd).length === 0 && <span class="py-1 text-sm text-ink-soft">Not available</span>}
-            </div>
-          </div>
-          <form method="POST" action="/api/availability" class="mt-3 flex items-center gap-2">
-            <input type="hidden" name="weekday" value={wd} />
-            <input type="time" name="start_time" required class={inputCls} />
-            <span class="text-sm text-ink-soft">to</span>
-            <input type="time" name="end_time" required class={inputCls} />
-            <button class={addBtn}>Add</button>
-          </form>
+        <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
+          <span class="w-24 shrink-0 font-semibold">{label}</span>
+          {byDay(wd).map((r) => (
+            <span class="tnum inline-flex items-center gap-1.5 rounded-md bg-paper px-2 py-1 ring-1 ring-line">
+              {hhmm(r.start_time)}–{hhmm(r.end_time)}
+              <form method="POST" action="/api/availability">
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="id" value={r.id} />
+                <button class="btn btn-quiet btn-sm" aria-label="Remove window">×</button>
+              </form>
+            </span>
+          ))}
+          {byDay(wd).length === 0 && <span class="text-ink-soft">Closed</span>}
         </div>
       ))
     }
   </div>
 
-  <h2 class="mt-12 text-xl font-bold">Blackout dates</h2>
+  <form method="POST" action="/api/availability" class="mt-3 flex flex-wrap items-end gap-2">
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">Day</span>
+      <select name="weekday" class="field w-36">
+        {DAYS.map((label, wd) => <option value={wd}>{label}</option>)}
+      </select>
+    </label>
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">From</span>
+      <input type="time" name="start_time" required value="09:00" class="field w-28" />
+    </label>
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">To</span>
+      <input type="time" name="end_time" required value="17:00" class="field w-28" />
+    </label>
+    <button class="btn btn-ghost">Add hours</button>
+  </form>
+
+  <p class="eyebrow mt-8">Blackout dates</p>
   <p class="mt-1 text-sm text-ink-soft">Whole days closed — holidays, travel.</p>
 
-  <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
+  <div class="card rowlist mt-2">
     {
       (blackouts ?? []).map((b) => (
-        <li class="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+        <div class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
           <span class="tnum">
             {b.date}
             {b.reason && <span class="text-ink-soft"> — {b.reason}</span>}
@@ -85,17 +86,17 @@ const addBtn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper h
           <form method="POST" action="/api/blackouts">
             <input type="hidden" name="action" value="delete" />
             <input type="hidden" name="id" value={b.id} />
-            <button class="text-ink-soft hover:text-ink">Remove</button>
+            <button class="btn btn-quiet btn-sm">Remove</button>
           </form>
-        </li>
+        </div>
       ))
     }
-    {(blackouts ?? []).length === 0 && <li class="px-4 py-2.5 text-sm text-ink-soft">None</li>}
-  </ul>
+    {(blackouts ?? []).length === 0 && <div class="px-4 py-2 text-sm text-ink-soft">None.</div>}
+  </div>
 
   <form method="POST" action="/api/blackouts" class="mt-3 flex flex-wrap items-center gap-2">
-    <input type="date" name="date" required min={todayIso} class={inputCls} />
-    <input type="text" name="reason" placeholder="Reason (optional)" maxlength="120" class={`${inputCls} grow`} />
-    <button class={addBtn}>Add blackout</button>
+    <input type="date" name="date" required min={todayIso} class="field w-40" />
+    <input type="text" name="reason" placeholder="Reason (optional)" maxlength="120" class="field grow" />
+    <button class="btn btn-ghost">Add blackout</button>
   </form>
-</Base>
+</Coach>

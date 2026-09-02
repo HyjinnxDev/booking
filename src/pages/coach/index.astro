@@ -1,178 +1,325 @@
 ---
-import Base from '../../layouts/Base.astro';
-import { fmtLong, fmtPrice } from '../../lib/format';
-import { SITE_URL } from '../../lib/config';
+import Coach from '../../layouts/Coach.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
 import { upcomingOccurrences } from '../../lib/sessions';
+import { fmtTime, fmtPrice, todayStr, addDaysStr, calFmt, localDay } from '../../lib/format';
+import { getAvailableSlots } from '../../lib/slots';
+import { SITE_URL, BUSINESS_TZ } from '../../lib/config';
+import { fromZonedTime } from 'date-fns-tz';
 
 const { locals, url } = Astro;
 const coachId = locals.user!.id;
-const nowIso = new Date().toISOString();
-const flash = url.searchParams.get('cancelled') ? 'Booking cancelled — the client was emailed.'
-  : url.searchParams.get('rescheduled') ? 'Booking moved — the client was emailed.'
-  : '';
+const db = createSupabaseAdmin();
 
-const [{ data: apptRows }, { data: classBookings }, occ, { data: me }] = await Promise.all([
-  locals.supabase
+const span = url.searchParams.get('span') === 'week' ? 'week' : 'day';
+let d = url.searchParams.get('d') || todayStr();
+if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = todayStr();
+
+let from = d;
+if (span === 'week') {
+  const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+  from = addDaysStr(d, wd === 0 ? -6 : 1 - wd);
+}
+const dayCount = span === 'week' ? 7 : 1;
+const to = addDaysStr(from, dayCount);
+const rangeStart = fromZonedTime(`${from}T00:00:00`, BUSINESS_TZ).toISOString();
+const rangeEnd = fromZonedTime(`${to}T00:00:00`, BUSINESS_TZ).toISOString();
+
+const flash = url.searchParams.get('cancelled')
+  ? 'Booking cancelled — the client was emailed.'
+  : url.searchParams.get('rescheduled')
+    ? 'Booking moved — the client was emailed.'
+    : url.searchParams.get('walkin') === 'ok'
+      ? 'Walk-in booked — confirmation sent.'
+      : url.searchParams.get('walkin') === 'fail'
+        ? "That time wasn't open. Pick another."
+        : '';
+
+const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promise.all([
+  db
     .from('bookings')
-    .select('id, start_at, notes, intake, price_cents, payment_status, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )')
+    .select(
+      'id, start_at, status, notes, intake, price_cents, payment_status, pass_id, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )',
+    )
     .eq('coach_id', coachId)
-    .eq('status', 'confirmed')
     .is('class_occurrence_id', null)
-    .gte('start_at', nowIso)
+    .neq('status', 'cancelled')
+    .gte('start_at', rangeStart)
+    .lt('start_at', rangeEnd)
     .order('start_at'),
-  locals.supabase
-    .from('bookings')
-    .select('id, class_occurrence_id, intake, price_cents, payment_status, client:client_id ( name, email, phone )')
-    .eq('coach_id', coachId)
-    .eq('status', 'confirmed')
-    .not('class_occurrence_id', 'is', null),
-  upcomingOccurrences({ coachId }),
-  locals.supabase.from('profiles').select('cal_token').eq('id', coachId).single(),
+  upcomingOccurrences({ coachId, from: new Date(rangeStart) }),
+  db.from('blackout_dates').select('date, reason').eq('coach_id', coachId).gte('date', from).lt('date', to),
+  db.from('profiles').select('cal_token').eq('id', coachId).single(),
 ]);
 
-const appts = (apptRows ?? []) as any[];
-const rosterByOcc = new Map<string, any[]>();
-for (const b of (classBookings ?? []) as any[]) {
-  const list = rosterByOcc.get(b.class_occurrence_id) ?? [];
-  list.push(b);
-  rosterByOcc.set(b.class_occurrence_id, list);
+const classOcc = occ.filter((o) => o.start_at < rangeEnd);
+const { data: rosterRows } =
+  classOcc.length > 0
+    ? await db
+        .from('bookings')
+        .select(
+          'id, class_occurrence_id, intake, price_cents, payment_status, client:client_id ( name, email, phone )',
+        )
+        .in(
+          'class_occurrence_id',
+          classOcc.map((o) => o.id),
+        )
+        .eq('status', 'confirmed')
+    : { data: [] as any[] };
+const roster = new Map<string, any[]>();
+for (const b of rosterRows ?? []) {
+  (roster.get(b.class_occurrence_id) ?? roster.set(b.class_occurrence_id, []).get(b.class_occurrence_id)!).push(b);
 }
 
-const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
-const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+type Row =
+  | { at: string; day: string; kind: 'appt'; b: any }
+  | { at: string; day: string; kind: 'class'; o: any }
+  | { at: string; day: string; kind: 'blackout'; label: string };
 
-const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-ink';
+const rows: Row[] = [];
+for (const b of (apptRows ?? []) as any[]) rows.push({ at: b.start_at, day: localDay(b.start_at), kind: 'appt', b });
+for (const o of classOcc) rows.push({ at: o.start_at, day: localDay(o.start_at), kind: 'class', o });
+for (const bl of (blackouts ?? []) as any[])
+  rows.push({ at: `${bl.date}T00:00`, day: bl.date, kind: 'blackout', label: bl.reason ? `Closed — ${bl.reason}` : 'Closed all day' });
+rows.sort((a, b) => a.at.localeCompare(b.at));
+
+const days = Array.from({ length: dayCount }, (_, i) => addDaysStr(from, i));
+const rowsByDay = new Map(days.map((day) => [day, rows.filter((r) => r.day === day)]));
+
+// ---- walk-in ----
+const wt = url.searchParams.get('wt') ?? '';
+const wd = url.searchParams.get('wd') || todayStr();
+const { data: typeRows } = await db
+  .from('session_types')
+  .select('id, name, kind, session_variants ( id, name, duration_min, active )')
+  .eq('coach_id', coachId)
+  .eq('kind', 'appointment')
+  .eq('active', true)
+  .order('sort');
+const walkTypes = (typeRows ?? []) as any[];
+const walkType = walkTypes.find((t) => t.id === wt) ?? walkTypes[0];
+const walkVariant =
+  (walkType?.session_variants ?? []).find((v: any) => v.active) ?? walkType?.session_variants?.[0];
+const walkOpen = url.searchParams.get('walk') === '1';
+const walkSlots = walkOpen && walkVariant ? await getAvailableSlots(coachId, wd, walkVariant.duration_min) : [];
+
+const prevD = addDaysStr(from, -dayCount);
+const nextD = addDaysStr(from, dayCount);
+const nav = (o: Record<string, string>) => `/coach?${new URLSearchParams({ span, d, ...o }).toString()}`;
+
+const rangeLabel =
+  span === 'week' ? `${calFmt(from, 'd MMM')} – ${calFmt(addDaysStr(from, 6), 'd MMM')}` : calFmt(d, 'EEEE d MMMM');
+
+const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
 ---
 
-<Base title="Coach dashboard">
-  <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h1 class="text-3xl font-extrabold sm:text-4xl">Dashboard</h1>
-    <nav class="flex gap-4 text-sm font-semibold">
-      <a href="/coach/services" class="text-ink underline underline-offset-2">Sessions</a>
-      <a href="/coach/schedule" class="text-ink underline underline-offset-2">Schedule</a>
-      <a href="/coach/availability" class="text-ink underline underline-offset-2">Availability</a>
-      <a href="/coach/locations" class="text-ink underline underline-offset-2">Locations</a>
-      <a href="/coach/passes" class="text-ink underline underline-offset-2">Passes</a>
-      <a href="/coach/calendar" class="text-ink underline underline-offset-2">Calendar</a>
-    </nav>
-  </div>
-
-  {flash && <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">{flash}</p>}
-
-  <h2 class="mt-10 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming appointments</h2>
-  {
-    appts.length === 0 ? (
-      <p class="mt-3 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
-        No upcoming appointments.
-      </p>
-    ) : (
-      <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
-        {appts.map((b) => (
-          <li class="px-4 py-4">
-            <p class="tnum font-display font-bold">{fmtLong(b.start_at)}</p>
-            <p class="mt-1 text-sm">
-              <span class="font-semibold">{b.client?.name || 'Client'}</span>
-              <span class="text-ink-soft">
-                {' · '}{b.variant?.session_types?.name ?? 'Session'}{b.variant?.name ? ` (${b.variant.name})` : ''}
-                {' · '}{b.client?.email}{b.client?.phone ? ` · ${b.client.phone}` : ''}
-              </span>
-            </p>
-            <p class="mt-1 flex items-center gap-2 text-xs text-ink-soft">
-              <span>{fmtPrice(b.price_cents)}</span>
-              {b.payment_status !== 'free' && (
-                <form method="POST" action="/api/schedule">
-                  <input type="hidden" name="action" value="booking.pay" />
-                  <input type="hidden" name="id" value={b.id} />
-                  <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
-                  <button class={payBtn}>{b.payment_status === 'paid' ? 'Paid ✓' : 'Mark paid'}</button>
-                </form>
-              )}
-              <a href={`/m/${b.id}`} class={payBtn}>Manage</a>
-              <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark this client as a no-show?')">
-                <input type="hidden" name="action" value="booking.noshow" />
-                <input type="hidden" name="id" value={b.id} />
-                <button class={payBtn}>No-show</button>
-              </form>
-            </p>
-            {b.notes && <p class="mt-1 text-sm text-ink-soft">{b.notes}</p>}
-            {b.intake &&
-              Object.entries(b.intake).map(([k, v]) => (
-                <p class="mt-1 text-xs text-ink-soft">
-                  <span class="font-semibold">{k}:</span> {v === true ? 'yes' : String(v)}
-                </p>
-              ))}
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
-  <h2 class="mt-12 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming classes</h2>
-  {
-    occ.length === 0 ? (
-      <p class="mt-3 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
-        No upcoming classes. <a href="/coach/schedule" class="font-semibold text-ink underline underline-offset-2">Schedule one</a>.
-      </p>
-    ) : (
-      <div class="mt-3 space-y-4">
-        {occ.map((o) => {
-          const roster = rosterByOcc.get(o.id) ?? [];
-          return (
-            <div class="overflow-hidden rounded-xl border border-line bg-white">
-              <div class="border-b border-line px-4 py-3">
-                <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
-                <p class="text-sm text-ink-soft">
-                  {o.type.name} · {o.seats_taken}/{o.capacity} booked{o.waiting > 0 ? ` · ${o.waiting} waiting` : ''}
-                </p>
-              </div>
-              {roster.length === 0 ? (
-                <p class="px-4 py-3 text-sm text-ink-soft">No bookings yet.</p>
-              ) : (
-                <ul class="divide-y divide-line">
-                  {roster.map((b) => (
-                    <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                      <span>
-                        <span class="font-semibold">{b.client?.name || 'Client'}</span>
-                        <span class="text-ink-soft"> · {b.client?.email}{b.client?.phone ? ` · ${b.client.phone}` : ''}</span>
-                      </span>
-                      <span class="flex items-center gap-2 text-xs text-ink-soft">
-                        {fmtPrice(b.price_cents)}
-                        {b.payment_status !== 'free' && (
-                          <form method="POST" action="/api/schedule">
-                            <input type="hidden" name="action" value="booking.pay" />
-                            <input type="hidden" name="id" value={b.id} />
-                            <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
-                            <button class={payBtn}>{b.payment_status === 'paid' ? 'Paid ✓' : 'Mark paid'}</button>
-                          </form>
-                        )}
-                        <a href={`/m/${b.id}`} class={payBtn}>Manage</a>
-                      </span>
-                      {b.intake && (
-                        <span class="w-full text-xs text-ink-soft">
-                          {Object.entries(b.intake)
-                            .map(([k, v]) => `${k}: ${v === true ? 'yes' : String(v)}`)
-                            .join(' · ')}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    )
-  }
-
-  <p class="mt-12 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Calendar subscription</p>
-  <p class="mt-2 text-sm text-ink-soft">
-    A read-only feed for Apple or Google Calendar — it updates itself. Keep the link private.
-  </p>
-  <div class="mt-3 flex flex-col gap-3">
-    <code class="block overflow-x-auto rounded-lg border border-line bg-white px-3 py-2 text-xs">{feedUrl}</code>
-    <a href={webcalUrl} class="w-fit rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90">
-      Subscribe in calendar app
+<Coach title="Agenda">
+  <div slot="actions" class="flex items-center gap-1.5 text-sm">
+    <a href={nav({ d: prevD })} class="btn btn-ghost btn-sm" aria-label="Previous">←</a>
+    <a href={nav({ d: todayStr() })} class="btn btn-ghost btn-sm">Today</a>
+    <a href={nav({ d: nextD })} class="btn btn-ghost btn-sm" aria-label="Next">→</a>
+    <a
+      href={`/coach?${new URLSearchParams({ span: span === 'day' ? 'week' : 'day', d }).toString()}`}
+      class="btn btn-ghost btn-sm"
+    >
+      {span === 'day' ? 'Week' : 'Day'}
     </a>
   </div>
-</Base>
+
+  {flash && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">{flash}</p>}
+
+  <h2 class="text-lg font-bold">{rangeLabel}</h2>
+
+  <div class="mt-3 max-w-3xl space-y-5">
+    {
+      days.map((day) => {
+        const list = rowsByDay.get(day) ?? [];
+        return (
+          <section>
+            {span === 'week' && (
+              <p class="mb-1.5 text-sm font-semibold text-ink-soft">{calFmt(day, 'EEEE d MMM')}</p>
+            )}
+            {list.length === 0 ? (
+              <p class="text-sm text-ink-soft">{span === 'week' ? '—' : 'Nothing booked.'}</p>
+            ) : (
+              <div class="card rowlist">
+                {list.map((r) =>
+                  r.kind === 'blackout' ? (
+                    <div class="flex items-center gap-3 px-4 py-2.5 text-sm text-ink-soft">
+                      <span class="tnum w-16 shrink-0">All day</span>
+                      <span>{r.label}</span>
+                    </div>
+                  ) : r.kind === 'appt' ? (
+                    <details class="group">
+                      <summary class="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-paper">
+                        <span class="shrink-0 text-ink-soft transition group-open:rotate-90">›</span>
+                        <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.at)}</span>
+                        <span class="min-w-0 flex-1 truncate">
+                          {r.b.client?.name || 'Client'}
+                          <span class="text-ink-soft"> · {r.b.variant?.session_types?.name ?? 'Session'}</span>
+                          {r.b.status === 'no_show' && <span class="text-ink-soft"> · no-show</span>}
+                        </span>
+                        {r.b.payment_status === 'unpaid' && (
+                          <span class="shrink-0 rounded bg-ink/5 px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft">
+                            {fmtPrice(r.b.price_cents)} due
+                          </span>
+                        )}
+                      </summary>
+                      <div class="space-y-2 border-t border-line bg-paper px-4 py-3 text-sm">
+                        <p class="text-ink-soft">
+                          {r.b.client?.email}
+                          {r.b.client?.phone ? ` · ${r.b.client.phone}` : ''}
+                          {r.b.variant?.name ? ` · ${r.b.variant.name}` : ''}
+                          {r.b.pass_id ? ' · pass' : ` · ${fmtPrice(r.b.price_cents)}`}
+                        </p>
+                        {r.b.notes && <p>{r.b.notes}</p>}
+                        {r.b.intake &&
+                          Object.entries(r.b.intake).map(([k, v]) => (
+                            <p class="text-ink-soft">
+                              <span class="font-semibold text-ink">{k}</span> — {v === true ? 'yes' : String(v)}
+                            </p>
+                          ))}
+                        <div class="flex flex-wrap gap-2 pt-1">
+                          {r.b.payment_status !== 'free' && (
+                            <form method="POST" action="/api/schedule">
+                              <input type="hidden" name="action" value="booking.pay" />
+                              <input type="hidden" name="id" value={r.b.id} />
+                              <input type="hidden" name="to" value={r.b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
+                              <button class="btn btn-ghost btn-sm">
+                                {r.b.payment_status === 'paid' ? 'Mark unpaid' : 'Mark paid'}
+                              </button>
+                            </form>
+                          )}
+                          <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / cancel</a>
+                          {r.b.status === 'confirmed' && (
+                            <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark as a no-show?')">
+                              <input type="hidden" name="action" value="booking.noshow" />
+                              <input type="hidden" name="id" value={r.b.id} />
+                              <button class="btn btn-ghost btn-sm btn-danger">No-show</button>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  ) : (
+                    <details class="group">
+                      <summary class="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-paper">
+                        <span class="shrink-0 text-ink-soft transition group-open:rotate-90">›</span>
+                        <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.at)}</span>
+                        <span class="min-w-0 flex-1 truncate">
+                          {r.o.type.name}
+                          <span class="text-ink-soft">
+                            {' · '}{r.o.seats_taken}/{r.o.capacity}
+                            {r.o.waiting > 0 ? ` · ${r.o.waiting} waiting` : ''}
+                          </span>
+                        </span>
+                      </summary>
+                      <div class="border-t border-line bg-paper px-4 py-3 text-sm">
+                        {(roster.get(r.o.id) ?? []).length === 0 ? (
+                          <p class="text-ink-soft">No bookings yet.</p>
+                        ) : (
+                          <ul class="space-y-1.5">
+                            {(roster.get(r.o.id) ?? []).map((b: any) => (
+                              <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span class="font-medium">{b.client?.name || 'Client'}</span>
+                                <span class="text-ink-soft">
+                                  {b.client?.email}
+                                  {b.client?.phone ? ` · ${b.client.phone}` : ''}
+                                </span>
+                                {b.payment_status !== 'free' && (
+                                  <form method="POST" action="/api/schedule">
+                                    <input type="hidden" name="action" value="booking.pay" />
+                                    <input type="hidden" name="id" value={b.id} />
+                                    <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
+                                    <button class="btn btn-quiet btn-sm">
+                                      {b.payment_status === 'paid' ? 'paid ✓' : 'mark paid'}
+                                    </button>
+                                  </form>
+                                )}
+                                <a href={`/m/${b.id}`} class="btn btn-quiet btn-sm">manage</a>
+                                {b.intake && (
+                                  <span class="w-full text-xs text-ink-soft">
+                                    {Object.entries(b.intake)
+                                      .map(([k, v]) => `${k}: ${v === true ? 'yes' : String(v)}`)
+                                      .join(' · ')}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div class="mt-2 flex gap-2">
+                          <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
+                            <input type="hidden" name="action" value="occ.cancel" />
+                            <input type="hidden" name="id" value={r.o.id} />
+                            <button class="btn btn-ghost btn-sm btn-danger">Cancel class</button>
+                          </form>
+                        </div>
+                      </div>
+                    </details>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
+        );
+      })
+    }
+  </div>
+
+  <details class="mt-8" open={walkOpen}>
+    <summary class="eyebrow cursor-pointer">Add a walk-in</summary>
+    <p class="mt-2 text-sm text-ink-soft">Books an appointment for a client and emails them the confirmation.</p>
+    <form method="GET" class="mt-3 flex flex-wrap items-end gap-2">
+      <input type="hidden" name="span" value={span} />
+      <input type="hidden" name="d" value={d} />
+      <input type="hidden" name="walk" value="1" />
+      <label class="text-sm">
+        <span class="mb-1 block text-ink-soft">Session</span>
+        <select name="wt" class="field w-44">
+          {walkTypes.map((t) => (
+            <option value={t.id} selected={t.id === walkType?.id}>{t.name}</option>
+          ))}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-ink-soft">Date</span>
+        <input type="date" name="wd" value={wd} min={todayStr()} class="field w-40" />
+      </label>
+      <button class="btn btn-ghost">Show times</button>
+    </form>
+    {
+      walkOpen && walkVariant && (
+        <form method="POST" action="/api/walkin" class="card mt-3 p-4">
+          <input type="hidden" name="variant_id" value={walkVariant.id} />
+          <input type="hidden" name="date" value={wd} />
+          <input type="hidden" name="back" value="/coach" />
+          <div class="flex flex-wrap gap-2">
+            <input name="name" required placeholder="Client name" class="field w-44" />
+            <input name="email" type="email" required placeholder="Client email" class="field w-52" />
+          </div>
+          {walkSlots.length === 0 ? (
+            <p class="mt-3 text-sm text-ink-soft">No open times on {calFmt(wd, 'EEEE d MMM')}.</p>
+          ) : (
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              {walkSlots.map((s) => (
+                <button name="start_at" value={s.startAt} class="btn btn-ghost btn-sm tnum">
+                  {fmtTime(s.startAt)}
+                </button>
+              ))}
+            </div>
+          )}
+        </form>
+      )
+    }
+  </details>
+
+  <details class="mt-4">
+    <summary class="eyebrow cursor-pointer">Calendar subscription</summary>
+    <p class="mt-2 text-sm text-ink-soft">A read-only feed for Apple or Google Calendar. Keep the link private.</p>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <code class="overflow-x-auto rounded-lg border border-line bg-white px-3 py-1.5 text-xs">{feedUrl}</code>
+      <a href={feedUrl.replace(/^https?:/, 'webcal:')} class="btn btn-ghost btn-sm">Subscribe</a>
+    </div>
+  </details>
+</Coach>

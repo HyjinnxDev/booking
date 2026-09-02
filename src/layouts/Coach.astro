@@ -1,0 +1,55 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  desc?: string;
+}
+const { title, desc } = Astro.props;
+const path = Astro.url.pathname;
+
+const tabs = [
+  { href: '/coach', label: 'Agenda' },
+  { href: '/coach/services', label: 'Sessions' },
+  { href: '/coach/schedule', label: 'Classes' },
+  { href: '/coach/availability', label: 'Hours' },
+  { href: '/coach/locations', label: 'Locations' },
+  { href: '/coach/passes', label: 'Passes' },
+];
+const active = (href: string) => (href === '/coach' ? path === '/coach' : path.startsWith(href));
+---
+
+<Base title={title} wide>
+  <nav class="-mx-1 flex flex-wrap gap-x-1 gap-y-1 border-b border-line pb-px text-sm">
+    {
+      tabs.map((t) => (
+        <a
+          href={t.href}
+          aria-current={active(t.href) ? 'page' : undefined}
+          class:list={[
+            'rounded-t-md px-3 py-2 font-semibold',
+            active(t.href)
+              ? 'border-b-2 border-ball text-ink'
+              : 'border-b-2 border-transparent text-ink-soft hover:text-ink',
+          ]}
+        >
+          {t.label}
+        </a>
+      ))
+    }
+  </nav>
+
+  <header class="mt-6 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold">{title}</h1>
+      {desc && <p class="mt-1 max-w-prose text-sm text-ink-soft">{desc}</p>}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <slot name="actions" />
+    </div>
+  </header>
+
+  <div class="mt-6">
+    <slot />
+  </div>
+</Base>

@@ -37,6 +37,140 @@ h3 {
   padding-inline: 0.1em;
 }
 
+/* ---------------------------------------------------------------------------
+   Shared form + action primitives. One field style, one button family, used
+   everywhere so the console reads as one tool. In @layer components so Tailwind
+   width/spacing utilities still override.
+   --------------------------------------------------------------------------- */
+
+@layer components {
+
+.field {
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--color-ink);
+}
+.field:focus,
+.field:focus-visible {
+  outline: none;
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ball) 45%, transparent);
+}
+.field::placeholder {
+  color: color-mix(in srgb, var(--color-ink-soft) 75%, transparent);
+}
+/* Native date/time affordance — quieter, consistent hit target. */
+.field::-webkit-calendar-picker-indicator {
+  opacity: 0.45;
+  cursor: pointer;
+}
+.field::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.8;
+}
+select.field {
+  padding-right: 1.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%2370726f' stroke-width='1.5' d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid var(--color-ink);
+  border-radius: 0.5rem;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:hover {
+  opacity: 0.9;
+}
+.btn-ghost {
+  background: #fff;
+  color: var(--color-ink);
+  border-color: var(--color-line);
+}
+.btn-ghost:hover {
+  border-color: var(--color-ink);
+  opacity: 1;
+}
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-ink-soft);
+  font-weight: 500;
+  padding-inline: 0.35rem;
+}
+.btn-quiet:hover {
+  color: var(--color-ink);
+  opacity: 1;
+}
+.btn-danger:hover {
+  color: #b91c1c;
+  border-color: #b91c1c;
+}
+.btn-sm {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: 0.4rem;
+}
+.btn:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* Bordered white surface + hairline-divided list, reused across the console. */
+.card {
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: #fff;
+  overflow: hidden;
+}
+.rowlist > * + * {
+  border-top: 1px solid var(--color-line);
+}
+
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+/* We supply our own disclosure affordance everywhere. */
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary.eyebrow::before {
+  content: '+ ';
+}
+details[open] > summary.eyebrow::before {
+  content: '– ';
+}
+
+} /* @layer components */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

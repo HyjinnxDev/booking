@@ -1,5 +1,5 @@
 ---
-import Base from '../../layouts/Base.astro';
+import Coach from '../../layouts/Coach.astro';
 import { listSessionTypes, upcomingOccurrences } from '../../lib/sessions';
 import { fmtLong, todayStr, addDaysStr } from '../../lib/format';
 import { SERIES_WEEKS } from '../../lib/config';
@@ -7,43 +7,31 @@ import { SERIES_WEEKS } from '../../lib/config';
 const { locals, url } = Astro;
 const coachId = locals.user!.id;
 
-const [types, occ] = await Promise.all([
-  listSessionTypes(coachId),
-  upcomingOccurrences({ coachId }),
-]);
+const [types, occ] = await Promise.all([listSessionTypes(coachId), upcomingOccurrences({ coachId })]);
 const classTypes = types.filter((t) => t.kind === 'class');
 
 const err = url.searchParams.get('error');
 const added = url.searchParams.get('added');
 const today = todayStr();
 const defaultUntil = addDaysStr(today, SERIES_WEEKS * 7);
-
-const inputCls = 'rounded-lg border border-line bg-white px-2 py-1.5 text-sm focus:border-ink focus:outline-none';
-const btn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:opacity-90';
 ---
 
-<Base title="Schedule">
-  <a href="/coach" class="text-sm text-ink-soft hover:text-ink">← Dashboard</a>
-  <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Class schedule</h1>
-  <p class="mt-2 text-sm text-ink-soft">
-    Dated group sessions with seats. Manage the class types and prices on the
-    <a href="/coach/services" class="underline underline-offset-2">Sessions</a> page.
-  </p>
-
-  {err && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{err}</p>}
-  {added && <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">Added {added} session{added === '1' ? '' : 's'}.</p>}
+<Coach title="Classes" desc="Put dates on the calendar for your group sessions. Manage class types and prices on the Sessions tab.">
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {added && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Added {added} session{added === '1' ? '' : 's'}.</p>}
 
   {
     classTypes.length === 0 ? (
-      <p class="mt-8 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
-        No class-type sessions yet. Create one on the Sessions page first.
+      <p class="text-sm text-ink-soft">
+        No class-type sessions yet. Add one on the{' '}
+        <a href="/coach/services" class="font-semibold text-ink underline underline-offset-2">Sessions</a> tab first.
       </p>
     ) : (
-      <form method="POST" action="/api/schedule" class="mt-8 flex flex-wrap items-end gap-2 rounded-xl border border-line bg-white p-4">
+      <form method="POST" action="/api/schedule" class="card flex flex-wrap items-end gap-2.5 p-4">
         <input type="hidden" name="action" value="occ.create" />
         <label class="text-sm">
-          <span class="block text-ink-soft">Class</span>
-          <select name="session_type_id" class={`${inputCls} mt-1`}>
+          <span class="mb-1 block text-ink-soft">Class</span>
+          <select name="session_type_id" class="field w-48">
             {classTypes.map((t) => {
               const v = t.variants.find((x) => x.active) ?? t.variants[0];
               return <option value={t.id}>{t.name}{v ? ` — ${v.duration_min} min` : ''}</option>;
@@ -51,59 +39,59 @@ const btn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hove
           </select>
         </label>
         <label class="text-sm">
-          <span class="block text-ink-soft">Date</span>
-          <input type="date" name="date" required min={today} value={today} class={`${inputCls} mt-1`} />
+          <span class="mb-1 block text-ink-soft">Date</span>
+          <input type="date" name="date" required min={today} value={today} class="field w-40" />
         </label>
         <label class="text-sm">
-          <span class="block text-ink-soft">Start</span>
-          <input type="time" name="time" required value="18:00" class={`${inputCls} mt-1`} />
+          <span class="mb-1 block text-ink-soft">Start</span>
+          <input type="time" name="time" required value="18:00" class="field w-28" />
         </label>
         <label class="text-sm">
-          <span class="block text-ink-soft">Seats</span>
-          <input type="number" name="capacity" required value="8" min="1" class={`${inputCls} mt-1 w-20`} />
+          <span class="mb-1 block text-ink-soft">Seats</span>
+          <input type="number" name="capacity" required value="8" min="1" class="field w-16" />
         </label>
-        <label class="flex items-center gap-1.5 self-center pt-4 text-sm text-ink-soft">
-          <input type="checkbox" name="repeat" /> weekly until
+        <label class="flex items-center gap-1.5 py-2 text-sm text-ink-soft">
+          <input type="checkbox" name="repeat" /> Weekly until
         </label>
-        <input type="date" name="until" min={today} max={defaultUntil} value={defaultUntil} class={`${inputCls} self-center`} />
-        <button class={btn}>Schedule</button>
+        <input type="date" name="until" min={today} max={defaultUntil} value={defaultUntil} class="field w-40" />
+        <button class="btn">Schedule</button>
       </form>
     )
   }
 
-  <h2 class="mt-12 text-xl font-bold">Upcoming</h2>
+  <p class="eyebrow mt-8">Upcoming classes</p>
   {
     occ.length === 0 ? (
-      <p class="mt-3 text-sm text-ink-soft">Nothing scheduled.</p>
+      <p class="mt-2 text-sm text-ink-soft">Nothing scheduled.</p>
     ) : (
-      <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
+      <div class="card rowlist mt-2">
         {occ.map((o) => (
-          <li class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
-            <div>
-              <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2.5 text-sm">
+            <div class="min-w-0">
+              <p class="tnum font-semibold">{fmtLong(o.start_at)}</p>
               <p class="text-ink-soft">
                 {o.type.name} · {o.seats_taken}/{o.capacity} booked
                 {o.waiting > 0 && ` · ${o.waiting} waiting`}
-                {o.series_id && ' · part of a weekly series'}
+                {o.series_id && ' · weekly series'}
               </p>
             </div>
-            <div class="flex items-center gap-2">
-              <form method="POST" action="/api/schedule">
+            <div class="flex items-center gap-1.5">
+              <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
                 <input type="hidden" name="action" value="occ.cancel" />
                 <input type="hidden" name="id" value={o.id} />
-                <button class="rounded-lg border border-line px-3 py-1.5 hover:border-ink">Cancel</button>
+                <button class="btn btn-ghost btn-sm btn-danger">Cancel</button>
               </form>
               {o.series_id && (
                 <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel every future session in this series?')">
                   <input type="hidden" name="action" value="series.cancel" />
                   <input type="hidden" name="series_id" value={o.series_id} />
-                  <button class="text-xs text-ink-soft hover:text-ink">Cancel series</button>
+                  <button class="btn btn-quiet btn-sm">Cancel series</button>
                 </form>
               )}
             </div>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     )
   }
-</Base>
+</Coach>
