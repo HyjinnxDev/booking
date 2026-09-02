@@ -5,6 +5,7 @@ import { createSupabaseAdmin } from '../../lib/supabase';
 import { weeklySeries } from '../../lib/sessions';
 import { BUSINESS_TZ, SERIES_WEEKS } from '../../lib/config';
 import { addDaysStr, todayStr } from '../../lib/format';
+import { sendCancellation } from '../../lib/email';
 
 const STAFF = new Set(['coach', 'admin']);
 const BACK = '/coach/schedule';
@@ -21,15 +22,40 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const s = (k: string) => String(form.get(k) ?? '').trim();
   const fail = (msg: string) => redirect(`${BACK}?error=${encodeURIComponent(msg)}`);
 
-  // Cancel a class + release its seats. ponytail: no attendee email yet — the
-  // coach works the roster manually. Wire class-aware email when it stings.
+  // Cancel a class + release its seats, then email every attendee. Email is
+  // best-effort: a Resend failure is logged, never blocks the cancellation.
   async function cancelBookingsFor(occIds: string[]) {
     if (occIds.length === 0) return;
+
+    const { data: affected } = await db
+      .from('bookings')
+      .select('id, notes, client:client_id ( name, email ), occ:class_occurrence_id ( start_at, end_at )')
+      .in('class_occurrence_id', occIds)
+      .eq('status', 'confirmed');
+
     await db
       .from('bookings')
       .update({ status: 'cancelled' })
       .in('class_occurrence_id', occIds)
       .eq('status', 'confirmed');
+
+    const coachName = profile?.name || 'your coach';
+    for (const b of (affected ?? []) as any[]) {
+      if (!b.client?.email || !b.occ) continue;
+      try {
+        await sendCancellation({
+          to: b.client.email,
+          clientName: b.client.name ?? '',
+          coachName,
+          bookingId: b.id,
+          startAt: b.occ.start_at,
+          endAt: b.occ.end_at,
+          notes: b.notes,
+        });
+      } catch (e) {
+        console.error('class cancellation email failed for booking', b.id, e);
+      }
+    }
   }
 
   switch (action) {

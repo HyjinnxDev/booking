@@ -108,6 +108,15 @@ describe('exclusions', () => {
     expect(slots).toEqual([]);
   });
 
+  it('respects the minimum-notice window (default 120 min)', () => {
+    // starts are 13:00/14:00/15:00 UTC; now 11:30 UTC -> 2h cutoff drops 13:00.
+    const slots = run('2026-03-09', tz, rule, { now: new Date('2026-03-09T11:30:00.000Z') });
+    expect(slots.map((s) => s.startAt)).toEqual([
+      '2026-03-09T14:00:00.000Z',
+      '2026-03-09T15:00:00.000Z',
+    ]);
+  });
+
   it('dedupes overlapping availability rules', () => {
     const overlapping: AvailabilityRule[] = [
       { weekday: 1, start_time: '09:00', end_time: '11:00' },

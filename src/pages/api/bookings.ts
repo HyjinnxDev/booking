@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     .eq('id', id)
     .eq('client_id', user.id)
     .eq('status', 'confirmed')
-    .select('id, start_at, end_at, notes')
+    .select('id, start_at, end_at, notes, ics_sequence')
     .maybeSingle();
 
   if (!error && data) {
@@ -32,6 +32,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         startAt: data.start_at,
         endAt: data.end_at,
         notes: data.notes,
+        sequence: data.ics_sequence ?? 0,
       });
     } catch (e) {
       console.error('cancellation email failed', e);

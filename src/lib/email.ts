@@ -26,6 +26,8 @@ export interface BookingMail {
   startAt: string;
   endAt: string;
   notes?: string | null;
+  /** ICS SEQUENCE — bump on every reschedule so clients see an update. */
+  sequence?: number;
   /** Present only on the first booking, when we just created the account. */
   newAccount?: { tempPassword: string };
 }
@@ -37,6 +39,7 @@ function event(m: BookingMail): IcsEvent {
     endAt: m.endAt,
     summary: `Tennis coaching with ${m.coachName}`,
     description: m.notes || undefined,
+    sequence: m.sequence ?? 0,
   };
 }
 
@@ -79,8 +82,26 @@ export async function sendConfirmation(m: BookingMail) {
   });
 }
 
+export async function sendReschedule(m: BookingMail) {
+  const ics = bookingIcs(event(m), { method: 'REQUEST' });
+  return send({
+    from: FROM,
+    to: m.to,
+    subject: `Booking moved — ${fmtLong(m.startAt)}`,
+    html: shell(
+      `<p>Hi ${m.clientName || 'there'},</p>
+       <p>Your session with <strong>${m.coachName}</strong> has been moved to:</p>
+       <p style="font-size:18px"><strong>${fmtLong(m.startAt)}</strong></p>
+       ${m.notes ? `<p>Your notes: ${m.notes}</p>` : ''}
+       <p>The attached file updates it in your calendar.</p>
+       <p>Manage this booking at <a href="${SITE_URL}/bookings">${SITE_URL.replace(/^https?:\/\//, '')}/bookings</a>.</p>`,
+    ),
+    attachments: icsAttachment(ics),
+  });
+}
+
 export async function sendCancellation(m: BookingMail) {
-  const ics = bookingIcs({ ...event(m), sequence: 1 }, { method: 'CANCEL' });
+  const ics = bookingIcs({ ...event(m), sequence: (m.sequence ?? 0) + 1 }, { method: 'CANCEL' });
   return send({
     from: FROM,
     to: m.to,

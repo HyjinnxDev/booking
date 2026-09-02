@@ -17,5 +17,9 @@ export const SERIES_WEEKS = 12;
 // How far ahead clients may book.
 export const BOOKING_WINDOW_DAYS = 60;
 
+// Minimum lead time before a session starts. Slots inside this window disappear
+// and the booking API rejects them. Also the cancel/reschedule cutoff.
+export const MIN_NOTICE_MIN = 120;
+
 export const ICS_DOMAIN = 'technicourt.com';
 export const BRAND = 'TechniCourt';

@@ -6,7 +6,8 @@ import { getVariant, getOccurrence } from '../lib/sessions';
 import { createSupabaseAdmin } from '../lib/supabase';
 import { findOrCreateClient } from '../lib/accounts';
 import { sendConfirmation } from '../lib/email';
-import { fmtLong, fmtPrice } from '../lib/format';
+import { fmtLong, fmtPrice, todayStr, addDaysStr } from '../lib/format';
+import { BOOKING_WINDOW_DAYS, MIN_NOTICE_MIN } from '../lib/config';
 
 const { locals, url, redirect, request } = Astro;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,9 +36,11 @@ interface BookCtx {
 
 let ctx: BookCtx | null = null;
 
+const noticeCutoff = Date.now() + MIN_NOTICE_MIN * 60_000;
+
 if (occId) {
   const occ = await getOccurrence(occId);
-  if (!occ || new Date(occ.start_at).getTime() <= Date.now()) return redirect('/?error=slot_taken');
+  if (!occ || new Date(occ.start_at).getTime() <= noticeCutoff) return redirect('/?error=slot_taken');
   if (occ.seats_taken >= occ.capacity) return redirect(`/s/${occ.type.id}?error=full`);
   ctx = {
     kind: 'class',
@@ -54,8 +57,11 @@ if (occId) {
 } else if (variantId) {
   const v = await getVariant(variantId);
   if (!v || !v.active || v.type.kind !== 'appointment') return redirect('/');
-  const open = (await getAvailableSlots(coach.id, date, v.duration_min)).some((s) => s.startAt === startAtParam);
-  if (!startAtParam || !date || !open) return redirect(`/s/${v.type.id}?variant=${v.id}&date=${date || ''}&error=slot_taken`);
+  const maxDate = addDaysStr(todayStr(), BOOKING_WINDOW_DAYS);
+  const inWindow = !!date && date >= todayStr() && date <= maxDate;
+  const open =
+    inWindow && (await getAvailableSlots(coach.id, date, v.duration_min)).some((s) => s.startAt === startAtParam);
+  if (!startAtParam || !open) return redirect(`/s/${v.type.id}?variant=${v.id}&date=${date || ''}&error=slot_taken`);
   ctx = {
     kind: 'appointment',
     typeId: v.type.id,

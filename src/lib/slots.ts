@@ -1,5 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz';
-import { SLOT_STEP_MIN, BUSINESS_TZ } from './config';
+import { SLOT_STEP_MIN, BUSINESS_TZ, MIN_NOTICE_MIN } from './config';
 
 export interface AvailabilityRule {
   weekday: number; // 0 = Sunday .. 6 = Saturday
@@ -64,6 +64,7 @@ export function computeSlots(opts: {
 
   const seen = new Set<number>();
   const out: Slot[] = [];
+  const earliest = now.getTime() + MIN_NOTICE_MIN * 60_000;
 
   for (const rule of rules) {
     if (rule.weekday !== wd) continue;
@@ -76,7 +77,7 @@ export function computeSlots(opts: {
       const t = startUtc.getTime();
       if (Number.isNaN(t) || seen.has(t)) continue;
       const endT = t + durationMin * 60_000;
-      if (t <= now.getTime()) continue;
+      if (t < earliest) continue;
       if (overlaps(t, endT)) continue;
       seen.add(t);
       out.push({ startAt: startUtc.toISOString(), endAt: new Date(endT).toISOString() });
