@@ -8,8 +8,12 @@ const { url } = Astro;
 const errorCode = url.searchParams.get('error');
 
 const coach = await getPrimaryCoach();
-const types = coach ? await listSessionTypes(coach.id, { activeOnly: true }) : [];
-const occ = coach ? await upcomingOccurrences({ coachId: coach.id }) : [];
+const [types, occ] = coach
+  ? await Promise.all([
+      listSessionTypes(coach.id, { activeOnly: true }),
+      upcomingOccurrences({ coachId: coach.id }),
+    ])
+  : [[], []];
 const classCount = new Map<string, number>();
 for (const o of occ) classCount.set(o.type.id, (classCount.get(o.type.id) ?? 0) + 1);
 

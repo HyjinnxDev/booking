@@ -19,10 +19,19 @@ const path = Astro.url.pathname;
     <title>{title ? `${title} · ${BRAND}` : BRAND}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Load fonts without blocking first paint; system-ui shows immediately, swaps in. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
   </head>
   <body class="flex min-h-full flex-col">
     <header class="border-b border-line">

@@ -9,7 +9,13 @@ export interface Coach {
 
 // ponytail: v1 has one coach, so "the coach" = earliest-created coach profile.
 // Multi-coach selection UI is v2; the schema already carries coach_id everywhere.
+// Cached for the serverless instance lifetime — the coach row changes ~never and
+// this runs on every booking page. Restart / redeploy clears it.
+let cached: { coach: Coach | null; at: number } | null = null;
+const TTL_MS = 5 * 60_000;
+
 export async function getPrimaryCoach(): Promise<Coach | null> {
+  if (cached && Date.now() - cached.at < TTL_MS) return cached.coach;
   const db = createSupabaseAdmin();
   const { data } = await db
     .from('profiles')
@@ -18,5 +24,6 @@ export async function getPrimaryCoach(): Promise<Coach | null> {
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
-  return data as Coach | null;
+  cached = { coach: (data as Coach | null) ?? null, at: Date.now() };
+  return cached.coach;
 }

@@ -69,7 +69,7 @@ const qs = (extra: Record<string, string>) =>
                 ]}
               >
                 <span class="font-semibold">{v.name}</span>
-                <span class={v.id === variant.id ? 'opacity-80' : 'text-ink-soft'}> · {v.duration_min} min · {fmtPrice(v.price_cents)}</span>
+                <span class={v.id === variant.id ? 'opacity-80' : 'text-ink-soft'}> · {fmtPrice(v.price_cents)}</span>
               </a>
             ))}
           </div>

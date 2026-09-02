@@ -1,14 +1,14 @@
 import { formatInTimeZone } from 'date-fns-tz';
 import { BUSINESS_TZ } from './config';
 
-/** "Monday 15 March 2026, 9:00 AM AEDT" — for emails and UI. */
+/** "Monday 15 March 2026, 9:00am" — for emails and UI. Business-local, no tz label. */
 export function fmtLong(iso: string): string {
-  return formatInTimeZone(new Date(iso), BUSINESS_TZ, "EEEE d MMMM yyyy, h:mm a zzz");
+  return formatInTimeZone(new Date(iso), BUSINESS_TZ, 'EEEE d MMMM yyyy, h:mmaaa');
 }
 
-/** "9:00 AM" — slot buttons. */
+/** "9:00am" — slot buttons. */
 export function fmtTime(iso: string): string {
-  return formatInTimeZone(new Date(iso), BUSINESS_TZ, 'h:mm a');
+  return formatInTimeZone(new Date(iso), BUSINESS_TZ, 'h:mmaaa');
 }
 
 /** "2026-03-15" in the business timezone. */
