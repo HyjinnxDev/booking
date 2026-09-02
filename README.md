@@ -14,9 +14,13 @@ Vercel at `bookings.technicourt.com`.
 ## v1 features
 
 - Client sign-up / login
-- Booking page: pick a date, see one coach's open slots, book one
+- Session types: **appointments** (1:1, one option per length/price) and
+  **classes** (dated group sessions with a seat count, one-off or weekly)
+- Booking page: pick a session type → an appointment option + time, or a class seat
 - Client: view + cancel own bookings
-- Coach dashboard (role-gated): upcoming bookings, weekly availability, blackout dates
+- Coach dashboard (role-gated): appointment list, class rosters, mark-paid,
+  weekly availability, blackout dates
+- Coach: `/coach/services` (session types + options), `/coach/schedule` (class sessions)
 - Per-coach read-only ICS feed at `/cal/<token>.ics` (webcal subscription)
 - Confirmation + cancellation email, each with an `.ics` attachment
 - `/api/cron/reminders` — emails reminders for bookings in the next 24h
@@ -72,6 +76,16 @@ Node ≥ 22.19 (Astro engine requirement).
   them set it to `cancelled`. No reschedule in v1 (cancel + rebook).
 - One coach in v1. `getPrimaryCoach()` = earliest coach profile. Multi-coach
   selection UI is v2; the schema already carries `coach_id` throughout.
-- Slot length is a fixed 60 min (`SLOT_MINUTES`).
+- Appointment start times step on a fixed `SLOT_STEP_MIN` (30) grid; each
+  session option sets its own length. A booked appointment or a scheduled class
+  blocks every overlapping grid start.
+- Recurring classes are **materialised** `SERIES_WEEKS` (12) ahead when scheduled
+  — no RRULE, no auto top-up. The coach re-runs the form to extend.
+- Payments are v2: a paid session books immediately at `payment_status = 'unpaid'`
+  and the coach ticks "Mark paid" (cash/card in person). Price-0 → `'free'`.
+- Class capacity is enforced by a `before insert` trigger that row-locks the
+  occurrence; concurrent overfill / a client's second seat get SQLSTATE 23505.
+- Cancelling a class releases its seats but does **not** email attendees yet —
+  the coach works the roster. Wire class-aware email when it matters.
 - Emails and the ICS feed are best-effort: a Resend failure is logged, not
   surfaced to the user, and never blocks a booking.

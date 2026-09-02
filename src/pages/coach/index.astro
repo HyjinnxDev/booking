@@ -1,61 +1,148 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { fmtLong } from '../../lib/format';
+import { fmtLong, fmtPrice } from '../../lib/format';
 import { SITE_URL } from '../../lib/config';
+import { upcomingOccurrences } from '../../lib/sessions';
 
 const { locals } = Astro;
 const coachId = locals.user!.id;
+const nowIso = new Date().toISOString();
 
-const { data: rows } = await locals.supabase
-  .from('bookings')
-  .select('id, start_at, end_at, notes, status, client:client_id ( name, email, phone )')
-  .eq('coach_id', coachId)
-  .eq('status', 'confirmed')
-  .gte('start_at', new Date().toISOString())
-  .order('start_at', { ascending: true });
+const [{ data: apptRows }, { data: classBookings }, occ, { data: me }] = await Promise.all([
+  locals.supabase
+    .from('bookings')
+    .select('id, start_at, notes, price_cents, payment_status, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )')
+    .eq('coach_id', coachId)
+    .eq('status', 'confirmed')
+    .is('class_occurrence_id', null)
+    .gte('start_at', nowIso)
+    .order('start_at'),
+  locals.supabase
+    .from('bookings')
+    .select('id, class_occurrence_id, price_cents, payment_status, client:client_id ( name, email, phone )')
+    .eq('coach_id', coachId)
+    .eq('status', 'confirmed')
+    .not('class_occurrence_id', 'is', null),
+  upcomingOccurrences({ coachId }),
+  locals.supabase.from('profiles').select('cal_token').eq('id', coachId).single(),
+]);
 
-const { data: me } = await locals.supabase
-  .from('profiles')
-  .select('cal_token')
-  .eq('id', coachId)
-  .single();
+const appts = (apptRows ?? []) as any[];
+const rosterByOcc = new Map<string, any[]>();
+for (const b of (classBookings ?? []) as any[]) {
+  const list = rosterByOcc.get(b.class_occurrence_id) ?? [];
+  list.push(b);
+  rosterByOcc.set(b.class_occurrence_id, list);
+}
 
-const bookings = rows ?? [];
 const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
 const webcalUrl = feedUrl.replace(/^https?:/, 'webcal:');
+
+const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-ink';
 ---
 
 <Base title="Coach dashboard">
-  <div class="flex items-center justify-between">
-    <h1 class="text-xl font-semibold">Upcoming bookings</h1>
-    <a href="/coach/availability" class="text-sm underline">Edit availability</a>
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h1 class="text-3xl font-extrabold sm:text-4xl">Dashboard</h1>
+    <nav class="flex gap-4 text-sm font-semibold">
+      <a href="/coach/services" class="text-ink underline underline-offset-2">Sessions</a>
+      <a href="/coach/schedule" class="text-ink underline underline-offset-2">Schedule</a>
+      <a href="/coach/availability" class="text-ink underline underline-offset-2">Availability</a>
+    </nav>
   </div>
 
+  <h2 class="mt-10 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming appointments</h2>
   {
-    bookings.length === 0 ? (
-      <p class="mt-4 text-neutral-600">No upcoming bookings.</p>
+    appts.length === 0 ? (
+      <p class="mt-3 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+        No upcoming appointments.
+      </p>
     ) : (
-      <ul class="mt-4 divide-y divide-neutral-200 rounded border border-neutral-200 bg-white">
-        {bookings.map((b: any) => (
-          <li class="px-4 py-3">
-            <p class="font-medium">{fmtLong(b.start_at)}</p>
-            <p class="text-sm text-neutral-600">
-              {b.client?.name || 'Client'} · {b.client?.email}
-              {b.client?.phone ? ` · ${b.client.phone}` : ''}
+      <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
+        {appts.map((b) => (
+          <li class="px-4 py-4">
+            <p class="tnum font-display font-bold">{fmtLong(b.start_at)}</p>
+            <p class="mt-1 text-sm">
+              <span class="font-semibold">{b.client?.name || 'Client'}</span>
+              <span class="text-ink-soft">
+                {' · '}{b.variant?.session_types?.name ?? 'Session'}{b.variant?.name ? ` (${b.variant.name})` : ''}
+                {' · '}{b.client?.email}{b.client?.phone ? ` · ${b.client.phone}` : ''}
+              </span>
             </p>
-            {b.notes && <p class="mt-1 text-sm text-neutral-500">{b.notes}</p>}
+            <p class="mt-1 flex items-center gap-2 text-xs text-ink-soft">
+              <span>{fmtPrice(b.price_cents)}</span>
+              {b.payment_status !== 'free' && (
+                <form method="POST" action="/api/schedule">
+                  <input type="hidden" name="action" value="booking.pay" />
+                  <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
+                  <button class={payBtn}>{b.payment_status === 'paid' ? 'Paid ✓' : 'Mark paid'}</button>
+                </form>
+              )}
+            </p>
+            {b.notes && <p class="mt-1 text-sm text-ink-soft">{b.notes}</p>}
           </li>
         ))}
       </ul>
     )
   }
 
-  <h2 class="mt-8 text-sm font-semibold text-neutral-500 uppercase">Calendar subscription</h2>
-  <p class="mt-2 text-sm text-neutral-600">
-    Add this read-only feed to Apple or Google Calendar. It updates automatically; keep the URL private.
+  <h2 class="mt-12 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming classes</h2>
+  {
+    occ.length === 0 ? (
+      <p class="mt-3 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+        No upcoming classes. <a href="/coach/schedule" class="font-semibold text-ink underline underline-offset-2">Schedule one</a>.
+      </p>
+    ) : (
+      <div class="mt-3 space-y-4">
+        {occ.map((o) => {
+          const roster = rosterByOcc.get(o.id) ?? [];
+          return (
+            <div class="overflow-hidden rounded-xl border border-line bg-white">
+              <div class="border-b border-line px-4 py-3">
+                <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
+                <p class="text-sm text-ink-soft">{o.type.name} · {o.seats_taken}/{o.capacity} booked</p>
+              </div>
+              {roster.length === 0 ? (
+                <p class="px-4 py-3 text-sm text-ink-soft">No bookings yet.</p>
+              ) : (
+                <ul class="divide-y divide-line">
+                  {roster.map((b) => (
+                    <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                      <span>
+                        <span class="font-semibold">{b.client?.name || 'Client'}</span>
+                        <span class="text-ink-soft"> · {b.client?.email}{b.client?.phone ? ` · ${b.client.phone}` : ''}</span>
+                      </span>
+                      <span class="flex items-center gap-2 text-xs text-ink-soft">
+                        {fmtPrice(b.price_cents)}
+                        {b.payment_status !== 'free' && (
+                          <form method="POST" action="/api/schedule">
+                            <input type="hidden" name="action" value="booking.pay" />
+                            <input type="hidden" name="id" value={b.id} />
+                            <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
+                            <button class={payBtn}>{b.payment_status === 'paid' ? 'Paid ✓' : 'Mark paid'}</button>
+                          </form>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    )
+  }
+
+  <p class="mt-12 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Calendar subscription</p>
+  <p class="mt-2 text-sm text-ink-soft">
+    A read-only feed for Apple or Google Calendar — it updates itself. Keep the link private.
   </p>
-  <div class="mt-2 flex flex-col gap-2">
-    <code class="block overflow-x-auto rounded bg-neutral-100 px-3 py-2 text-xs">{feedUrl}</code>
-    <a href={webcalUrl} class="w-fit rounded border border-neutral-900 px-3 py-1 text-sm">Subscribe in calendar app</a>
+  <div class="mt-3 flex flex-col gap-3">
+    <code class="block overflow-x-auto rounded-lg border border-line bg-white px-3 py-2 text-xs">{feedUrl}</code>
+    <a href={webcalUrl} class="w-fit rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90">
+      Subscribe in calendar app
+    </a>
   </div>
 </Base>

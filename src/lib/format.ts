@@ -22,3 +22,19 @@ export function addDaysStr(dateStr: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Format a bare YYYY-MM-DD by its calendar value, e.g. calFmt('2026-08-31', 'EEEE d MMMM'). */
+export function calFmt(dateStr: string, pattern: string): string {
+  return formatInTimeZone(new Date(`${dateStr}T12:00:00Z`), 'UTC', pattern);
+}
+
+/** "$40", "$37.50", or "Free". */
+export function fmtPrice(cents: number): string {
+  if (!cents) return 'Free';
+  return `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
+}
+
+/** Dollars string -> integer cents. "40" -> 4000, "" -> 0. */
+export function parsePrice(s: string): number {
+  return Math.round(parseFloat(s || '0') * 100) || 0;
+}

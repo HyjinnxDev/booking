@@ -1,1 +1,47 @@
 @import 'tailwindcss';
+
+@theme {
+  --color-paper: #fcfbf9;
+  --color-ink: #17181a;
+  --color-ink-soft: #70726f;
+  --color-line: #e5e3dd;
+  --color-ball: #d8ed57;
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Times, day numbers, counts — line them up like a scoreboard. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Highlighter mark — used sparingly on a single word. */
+.mark {
+  background: linear-gradient(transparent 62%, var(--color-ball) 62% 92%, transparent 92%);
+  padding-inline: 0.1em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

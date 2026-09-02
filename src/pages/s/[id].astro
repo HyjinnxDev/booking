@@ -1,0 +1,174 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getPrimaryCoach } from '../../lib/coach';
+import { listSessionTypes, upcomingOccurrences } from '../../lib/sessions';
+import { getAvailableSlots } from '../../lib/slots';
+import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
+import { BOOKING_WINDOW_DAYS } from '../../lib/config';
+
+const { params, url } = Astro;
+const coach = await getPrimaryCoach();
+if (!coach) return Astro.redirect('/?error=unknown');
+
+const types = await listSessionTypes(coach.id, { activeOnly: true });
+const type = types.find((t) => t.id === params.id);
+if (!type || type.variants.length === 0) return Astro.redirect('/');
+
+const errorCode = url.searchParams.get('error');
+const errors: Record<string, string> = {
+  slot_taken: 'That time was just taken. Pick another.',
+  full: 'That class filled up. Pick another session.',
+};
+
+// ---- appointment state ----
+const today = todayStr();
+const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+let date = url.searchParams.get('date') || today;
+if (date < today) date = today;
+if (date > maxDate) date = maxDate;
+
+const variant =
+  type.kind === 'appointment'
+    ? type.variants.find((v) => v.id === url.searchParams.get('variant')) ?? type.variants[0]
+    : type.variants[0];
+
+const slots = type.kind === 'appointment' ? await getAvailableSlots(coach.id, date, variant.duration_min) : [];
+
+const rail = Array.from({ length: 7 }, (_, i) => {
+  const d = addDaysStr(today, i);
+  return { date: d, dow: calFmt(d, 'EEE'), day: calFmt(d, 'd'), isToday: d === today, isSelected: d === date };
+});
+
+// ---- class state ----
+const occ = type.kind === 'class' ? await upcomingOccurrences({ variantId: variant.id }) : [];
+
+const qs = (extra: Record<string, string>) =>
+  new URLSearchParams({ variant: variant.id, date, ...extra }).toString();
+---
+
+<Base title={type.name}>
+  <a href="/" class="text-sm text-ink-soft hover:text-ink">← All sessions</a>
+  <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">{type.name}</h1>
+  {type.blurb && <p class="mt-2 text-ink-soft">{type.blurb}</p>}
+
+  {errorCode && (
+    <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{errors[errorCode] ?? 'Try again.'}</p>
+  )}
+
+  {
+    type.kind === 'appointment' ? (
+      <>
+        {type.variants.length > 1 && (
+          <div class="mt-6 flex flex-wrap gap-2">
+            {type.variants.map((v) => (
+              <a
+                href={`/s/${type.id}?${new URLSearchParams({ variant: v.id, date }).toString()}`}
+                class:list={[
+                  'rounded-lg border px-3 py-2 text-sm',
+                  v.id === variant.id ? 'border-ink bg-ink text-paper' : 'border-line bg-white hover:border-ink',
+                ]}
+              >
+                <span class="font-semibold">{v.name}</span>
+                <span class={v.id === variant.id ? 'opacity-80' : 'text-ink-soft'}> · {v.duration_min} min · {fmtPrice(v.price_cents)}</span>
+              </a>
+            ))}
+          </div>
+        )}
+
+        <div class="mt-8">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <p class="font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">
+              {calFmt(date, 'EEEE d MMMM')} · {variant.duration_min} min · {fmtPrice(variant.price_cents)}
+            </p>
+            <form method="GET" class="text-xs text-ink-soft">
+              <input type="hidden" name="variant" value={variant.id} />
+              <label class="flex items-center gap-1.5 whitespace-nowrap">
+                Other date
+                <input
+                  type="date"
+                  name="date"
+                  value={date}
+                  min={today}
+                  max={maxDate}
+                  onchange="this.form.submit()"
+                  class="rounded-md border border-line bg-white px-2 py-1 text-ink"
+                />
+              </label>
+              <noscript><button class="ml-1 rounded-md border border-line px-2 py-1">Go</button></noscript>
+            </form>
+          </div>
+
+          <div class="mt-3 grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-line bg-line">
+            {rail.map((r) => (
+              <a
+                href={`/s/${type.id}?${new URLSearchParams({ variant: variant.id, date: r.date }).toString()}`}
+                class:list={[
+                  'flex flex-col items-center gap-1 bg-paper py-3 transition-colors hover:bg-white',
+                  r.isSelected && 'bg-ink! text-paper hover:bg-ink!',
+                ]}
+                aria-current={r.isSelected ? 'date' : undefined}
+              >
+                <span class="text-[11px] font-semibold uppercase tracking-wide opacity-70">{r.dow}</span>
+                <span class="tnum font-display text-lg font-bold">{r.day}</span>
+                <span class:list={['h-1.5 w-1.5 rounded-full', r.isToday ? 'bg-ball' : 'bg-transparent']} />
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {slots.length === 0 ? (
+          <p class="mt-8 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+            No open times on {calFmt(date, 'EEEE')}. Try another day.
+          </p>
+        ) : (
+          <>
+            <p class="mt-8 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Pick a time</p>
+            <div class="mt-3 grid grid-cols-2 overflow-hidden rounded-xl border-t border-l border-line sm:grid-cols-3 md:grid-cols-4">
+              {slots.map((s) => (
+                <a
+                  href={`/book?${qs({ start_at: s.startAt })}`}
+                  class="border-r border-b border-line bg-paper px-4 py-5 text-center transition-colors hover:bg-ball focus-visible:bg-ball focus-visible:outline-none"
+                >
+                  <span class="tnum font-display text-lg font-semibold">{fmtTime(s.startAt)}</span>
+                </a>
+              ))}
+            </div>
+          </>
+        )}
+      </>
+    ) : (
+      <>
+        <p class="mt-6 text-sm font-semibold">{variant.duration_min} min · {fmtPrice(variant.price_cents)} · {variant.capacity} seats</p>
+        {occ.length === 0 ? (
+          <p class="mt-8 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+            No sessions scheduled right now. Check back soon.
+          </p>
+        ) : (
+          <ul class="mt-6 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
+            {occ.map((o) => {
+              const left = o.capacity - o.seats_taken;
+              return (
+                <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+                  <div>
+                    <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
+                    <p class="text-sm text-ink-soft">{left > 0 ? `${left} of ${o.capacity} seats left` : 'Full'}</p>
+                  </div>
+                  {left > 0 ? (
+                    <a
+                      href={`/book?occ=${o.id}`}
+                      class="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90"
+                    >
+                      Book a seat
+                    </a>
+                  ) : (
+                    <span class="rounded-lg border border-line px-4 py-2 text-sm text-ink-soft">Full</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </>
+    )
+  }
+</Base>

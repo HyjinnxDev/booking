@@ -26,36 +26,63 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<Base title="Sign up">
-  <h1 class="text-xl font-semibold">Create an account</h1>
-  {error && <p class="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-  {
-    checkEmail ? (
-      <p class="mt-4 rounded bg-green-50 px-3 py-2 text-sm text-green-800">
-        Check your email for a confirmation link, then sign in.
-      </p>
-    ) : (
-      <form method="POST" class="mt-4 flex max-w-sm flex-col gap-3">
-        <label class="text-sm">
-          Name
-          <input type="text" name="name" required autocomplete="name"
-            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
-        </label>
-        <label class="text-sm">
-          Email
-          <input type="email" name="email" required autocomplete="email"
-            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
-        </label>
-        <label class="text-sm">
-          Password
-          <input type="password" name="password" required minlength="8" autocomplete="new-password"
-            class="mt-1 w-full rounded border border-neutral-300 px-3 py-2" />
-        </label>
-        <button class="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white">Sign up</button>
-      </form>
-    )
-  }
-  <p class="mt-4 text-sm text-neutral-600">
-    Already have an account? <a href="/login" class="underline">Sign in</a>
-  </p>
+<Base title="Create an account">
+  <div class="mx-auto max-w-sm">
+    <h1 class="text-3xl font-extrabold">Create an account</h1>
+    <p class="mt-2 text-sm text-ink-soft">
+      You don't need this to book — just <a href="/" class="font-semibold text-ink underline underline-offset-2">book a
+      session</a> and we'll set one up. This is for coaches and staff.
+    </p>
+
+    {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+
+    {
+      checkEmail ? (
+        <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">
+          Check your email for a confirmation link, then sign in.
+        </p>
+      ) : (
+        <form method="POST" class="mt-6 flex flex-col gap-4">
+          <label class="text-sm">
+            <span class="font-semibold">Name</span>
+            <input
+              type="text"
+              name="name"
+              required
+              autocomplete="name"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label class="text-sm">
+            <span class="font-semibold">Email</span>
+            <input
+              type="email"
+              name="email"
+              required
+              autocomplete="email"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label class="text-sm">
+            <span class="font-semibold">Password</span>
+            <input
+              type="password"
+              name="password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+          </label>
+          <button class="w-fit rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">
+            Sign up
+          </button>
+        </form>
+      )
+    }
+
+    <p class="mt-6 text-sm text-ink-soft">
+      Already have an account? <a href="/login" class="font-semibold text-ink underline underline-offset-2">Sign in</a>
+    </p>
+  </div>
 </Base>

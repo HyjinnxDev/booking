@@ -1,5 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz';
-import { SLOT_MINUTES, BUSINESS_TZ } from './config';
+import { SLOT_STEP_MIN, BUSINESS_TZ } from './config';
 
 export interface AvailabilityRule {
   weekday: number; // 0 = Sunday .. 6 = Saturday
@@ -10,6 +10,12 @@ export interface AvailabilityRule {
 export interface Slot {
   startAt: string; // UTC ISO
   endAt: string; // UTC ISO
+}
+
+/** A busy interval to subtract — an existing booking or a scheduled class. */
+export interface BusyRange {
+  start: string; // UTC ISO
+  end: string; // UTC ISO
 }
 
 /** Day of week (0=Sun) for a YYYY-MM-DD date, independent of timezone. */
@@ -23,8 +29,9 @@ function toMinutes(t: string): number {
 }
 
 /**
- * Available slots for one coach on one calendar date, computed server-side.
- * available = availability rules − existing confirmed bookings − blackout dates
+ * Open start times for an appointment of `durationMin` on one date, walking a
+ * `stepMin` grid inside the coach's availability and skipping anything that
+ * overlaps a busy range.
  *
  * DST-safe: local wall times are converted to UTC instants via the business
  * timezone, so a 9am slot is always 9am local regardless of offset changes.
@@ -32,67 +39,99 @@ function toMinutes(t: string): number {
 export function computeSlots(opts: {
   dateStr: string; // YYYY-MM-DD in business TZ
   tz: string;
+  durationMin: number;
+  stepMin?: number;
   rules: AvailabilityRule[];
-  bookedStartsUtc: string[]; // ISO start_at of existing confirmed bookings
+  busy: BusyRange[];
   isBlackout: boolean;
   now?: Date;
 }): Slot[] {
-  const { dateStr, tz, rules, bookedStartsUtc, isBlackout, now = new Date() } = opts;
+  const {
+    dateStr,
+    tz,
+    durationMin,
+    stepMin = SLOT_STEP_MIN,
+    rules,
+    busy,
+    isBlackout,
+    now = new Date(),
+  } = opts;
   if (isBlackout) return [];
 
   const wd = weekdayOf(dateStr);
-  const booked = new Set(bookedStartsUtc.map((s) => new Date(s).getTime()));
+  const spans = busy.map((b) => [new Date(b.start).getTime(), new Date(b.end).getTime()] as const);
+  const overlaps = (s: number, e: number) => spans.some(([bs, be]) => s < be && e > bs);
+
+  const seen = new Set<number>();
   const out: Slot[] = [];
 
   for (const rule of rules) {
     if (rule.weekday !== wd) continue;
     const startM = toMinutes(rule.start_time);
     const endM = toMinutes(rule.end_time);
-    for (let m = startM; m + SLOT_MINUTES <= endM; m += SLOT_MINUTES) {
+    for (let m = startM; m + durationMin <= endM; m += stepMin) {
       const hh = String(Math.floor(m / 60)).padStart(2, '0');
       const mm = String(m % 60).padStart(2, '0');
       const startUtc = fromZonedTime(`${dateStr}T${hh}:${mm}:00`, tz);
-      if (Number.isNaN(startUtc.getTime())) continue;
-      if (startUtc.getTime() <= now.getTime()) continue;
-      if (booked.has(startUtc.getTime())) continue;
-      out.push({
-        startAt: startUtc.toISOString(),
-        endAt: new Date(startUtc.getTime() + SLOT_MINUTES * 60_000).toISOString(),
-      });
+      const t = startUtc.getTime();
+      if (Number.isNaN(t) || seen.has(t)) continue;
+      const endT = t + durationMin * 60_000;
+      if (t <= now.getTime()) continue;
+      if (overlaps(t, endT)) continue;
+      seen.add(t);
+      out.push({ startAt: startUtc.toISOString(), endAt: new Date(endT).toISOString() });
     }
   }
 
   out.sort((a, b) => a.startAt.localeCompare(b.startAt));
-  return out.filter((s, i) => i === 0 || s.startAt !== out[i - 1].startAt);
+  return out;
 }
 
-/** Fetch inputs from the DB (service role) and compute slots for coach + date. */
-export async function getAvailableSlots(coachId: string, dateStr: string): Promise<Slot[]> {
+/** Fetch inputs from the DB (service role) and compute slots for coach + date + duration. */
+export async function getAvailableSlots(
+  coachId: string,
+  dateStr: string,
+  durationMin: number,
+): Promise<Slot[]> {
   // Dynamic import keeps `astro:env/server` out of the pure-logic module so it
   // stays unit-testable without the Astro build pipeline.
   const { createSupabaseAdmin } = await import('./supabase');
   const db = createSupabaseAdmin();
 
   const dayStart = fromZonedTime(`${dateStr}T00:00:00`, BUSINESS_TZ);
-  const dayEnd = new Date(dayStart.getTime() + 36 * 3600_000); // wide enough to cover any TZ day
+  const winStart = new Date(dayStart.getTime() - 12 * 3600_000); // catch a class that started before midnight
+  const winEnd = new Date(dayStart.getTime() + 36 * 3600_000);
 
-  const [rules, bookings, blackout] = await Promise.all([
+  const [rules, bookings, classes, blackout] = await Promise.all([
     db.from('availability').select('weekday, start_time, end_time').eq('coach_id', coachId),
     db
       .from('bookings')
-      .select('start_at')
+      .select('start_at, end_at')
       .eq('coach_id', coachId)
       .eq('status', 'confirmed')
-      .gte('start_at', dayStart.toISOString())
-      .lt('start_at', dayEnd.toISOString()),
+      .gte('start_at', winStart.toISOString())
+      .lt('start_at', winEnd.toISOString()),
+    db
+      .from('class_occurrences')
+      .select('start_at, end_at')
+      .eq('coach_id', coachId)
+      .eq('status', 'scheduled')
+      .gte('start_at', winStart.toISOString())
+      .lt('start_at', winEnd.toISOString()),
     db.from('blackout_dates').select('id').eq('coach_id', coachId).eq('date', dateStr),
   ]);
+
+  const busy: BusyRange[] = [
+    ...(bookings.data ?? []).map((b) => ({ start: b.start_at as string, end: b.end_at as string })),
+    ...(classes.data ?? []).map((c) => ({ start: c.start_at as string, end: c.end_at as string })),
+  ];
 
   return computeSlots({
     dateStr,
     tz: BUSINESS_TZ,
+    durationMin,
     rules: rules.data ?? [],
-    bookedStartsUtc: (bookings.data ?? []).map((b) => b.start_at as string),
+    busy,
     isBlackout: (blackout.data ?? []).length > 0,
   });
 }

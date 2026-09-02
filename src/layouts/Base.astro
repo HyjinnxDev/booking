@@ -8,6 +8,7 @@ interface Props {
 const { title } = Astro.props;
 const { user, profile } = Astro.locals;
 const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
+const path = Astro.url.pathname;
 ---
 
 <!doctype html>
@@ -16,28 +17,61 @@ const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title ? `${title} · ${BRAND}` : BRAND}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400..700&display=swap"
+      rel="stylesheet"
+    />
   </head>
-  <body class="min-h-full bg-neutral-50 text-neutral-900">
-    <header class="border-b border-neutral-200 bg-white">
-      <nav class="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3 text-sm">
-        <a href="/" class="font-semibold">{BRAND}</a>
-        <a href="/" class="text-neutral-600 hover:text-neutral-900">Book</a>
-        {user && <a href="/bookings" class="text-neutral-600 hover:text-neutral-900">My bookings</a>}
-        {isStaff && <a href="/coach" class="text-neutral-600 hover:text-neutral-900">Coach</a>}
-        <span class="flex-1"></span>
+  <body class="flex min-h-full flex-col">
+    <header class="border-b border-line">
+      <nav class="mx-auto flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-1 px-5 py-4">
+        <a href="/" class="mr-1 font-display text-lg tracking-tight">
+          <span class="font-medium">Techni</span><span class="font-extrabold">Court</span>
+        </a>
+        <a href="/" class:list={['text-sm hover:text-ink', path === '/' ? 'text-ink' : 'text-ink-soft']}>Book</a>
+        {
+          user && (
+            <a
+              href="/bookings"
+              class:list={['text-sm hover:text-ink', path === '/bookings' ? 'text-ink' : 'text-ink-soft']}
+            >
+              My bookings
+            </a>
+          )
+        }
+        {
+          isStaff && (
+            <a
+              href="/coach"
+              class:list={['text-sm hover:text-ink', path.startsWith('/coach') ? 'text-ink' : 'text-ink-soft']}
+            >
+              Coach
+            </a>
+          )
+        }
+        <span class="hidden flex-1 sm:block"></span>
         {
           user ? (
-            <form method="POST" action="/logout">
-              <button class="text-neutral-600 hover:text-neutral-900">Sign out</button>
+            <form method="POST" action="/logout" class="ml-auto sm:ml-0">
+              <button class="text-sm text-ink-soft hover:text-ink">Sign out</button>
             </form>
           ) : (
-            <a href="/login" class="text-neutral-600 hover:text-neutral-900">Sign in</a>
+            <a href="/login" class="ml-auto text-sm text-ink-soft hover:text-ink sm:ml-0">Sign in</a>
           )
         }
       </nav>
     </header>
-    <main class="mx-auto max-w-3xl px-4 py-8">
+
+    <main class="mx-auto w-full max-w-3xl flex-1 px-5 py-10 sm:py-14">
       <slot />
     </main>
+
+    <footer class="border-t border-line">
+      <div class="mx-auto max-w-3xl px-5 py-5 text-xs text-ink-soft">
+        {BRAND} · tennis coaching, {new Date().getFullYear()}
+      </div>
+    </footer>
   </body>
 </html>

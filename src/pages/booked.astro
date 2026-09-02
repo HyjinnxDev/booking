@@ -1,0 +1,31 @@
+---
+import Base from '../layouts/Base.astro';
+
+const isNew = Astro.url.searchParams.get('new') === '1';
+---
+
+<Base title="You're booked">
+  <div class="border-l-2 border-ball bg-white px-5 py-6">
+    <h1 class="text-3xl font-extrabold">You're booked</h1>
+    <p class="mt-2 text-ink-soft">
+      Check your email for the confirmation and a calendar invite.
+    </p>
+  </div>
+
+  {
+    isNew ? (
+      <p class="mt-6 text-sm">
+        We set up an account so you can view or cancel this booking. Your temporary password is in
+        that email — <a href="/login" class="font-semibold text-ink underline underline-offset-2">sign in</a> and
+        change it whenever you like.
+      </p>
+    ) : (
+      <p class="mt-6 text-sm">
+        <a href="/bookings" class="font-semibold text-ink underline underline-offset-2">Sign in</a> anytime to view or
+        cancel your bookings.
+      </p>
+    )
+  }
+
+  <a href="/" class="mt-8 inline-block text-sm text-ink-soft hover:text-ink">← Book another session</a>
+</Base>

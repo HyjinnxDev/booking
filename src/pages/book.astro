@@ -1,0 +1,248 @@
+---
+import Base from '../layouts/Base.astro';
+import { getPrimaryCoach } from '../lib/coach';
+import { getAvailableSlots } from '../lib/slots';
+import { getVariant, getOccurrence } from '../lib/sessions';
+import { createSupabaseAdmin } from '../lib/supabase';
+import { findOrCreateClient } from '../lib/accounts';
+import { sendConfirmation } from '../lib/email';
+import { fmtLong, fmtPrice } from '../lib/format';
+
+const { locals, url, redirect, request } = Astro;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const variantId = url.searchParams.get('variant') ?? '';
+const occId = url.searchParams.get('occ') ?? '';
+const startAtParam = url.searchParams.get('start_at') ?? '';
+const date = url.searchParams.get('date') ?? '';
+
+const coach = await getPrimaryCoach();
+if (!coach) return redirect('/?error=unknown');
+
+// Resolve what's being booked into a common shape.
+interface BookCtx {
+  kind: 'appointment' | 'class';
+  typeId: string;
+  typeName: string;
+  variantId: string;
+  variantName: string;
+  durationMin: number;
+  priceCents: number;
+  startAt: string;
+  endAt: string;
+  occId?: string;
+}
+
+let ctx: BookCtx | null = null;
+
+if (occId) {
+  const occ = await getOccurrence(occId);
+  if (!occ || new Date(occ.start_at).getTime() <= Date.now()) return redirect('/?error=slot_taken');
+  if (occ.seats_taken >= occ.capacity) return redirect(`/s/${occ.type.id}?error=full`);
+  ctx = {
+    kind: 'class',
+    typeId: occ.type.id,
+    typeName: occ.type.name,
+    variantId: occ.variant.id,
+    variantName: occ.variant.name,
+    durationMin: occ.variant.duration_min,
+    priceCents: occ.variant.price_cents,
+    startAt: occ.start_at,
+    endAt: occ.end_at,
+    occId: occ.id,
+  };
+} else if (variantId) {
+  const v = await getVariant(variantId);
+  if (!v || !v.active || v.type.kind !== 'appointment') return redirect('/');
+  const open = (await getAvailableSlots(coach.id, date, v.duration_min)).some((s) => s.startAt === startAtParam);
+  if (!startAtParam || !date || !open) return redirect(`/s/${v.type.id}?variant=${v.id}&date=${date || ''}&error=slot_taken`);
+  ctx = {
+    kind: 'appointment',
+    typeId: v.type.id,
+    typeName: v.type.name,
+    variantId: v.id,
+    variantName: v.name,
+    durationMin: v.duration_min,
+    priceCents: v.price_cents,
+    startAt: startAtParam,
+    endAt: new Date(new Date(startAtParam).getTime() + v.duration_min * 60_000).toISOString(),
+  };
+} else {
+  return redirect('/');
+}
+
+const loggedIn = !!locals.user;
+let values = { name: locals.profile?.name ?? '', email: locals.user?.email ?? '', phone: '', notes: '' };
+let error = '';
+
+async function createBooking(clientId: string, to: string, name: string, tempPassword?: string) {
+  const db = createSupabaseAdmin();
+  const c = ctx!;
+  const { data, error: e } = await db
+    .from('bookings')
+    .insert({
+      coach_id: coach!.id,
+      client_id: clientId,
+      start_at: c.startAt,
+      end_at: c.endAt,
+      status: 'confirmed',
+      notes: values.notes || null,
+      session_variant_id: c.variantId,
+      class_occurrence_id: c.occId ?? null,
+      price_cents: c.priceCents,
+      payment_status: c.priceCents === 0 ? 'free' : 'unpaid',
+    })
+    .select('id')
+    .single();
+
+  if (e) {
+    if (e.code === '23505') {
+      error =
+        c.kind === 'class'
+          ? 'That class just filled up, or you already have a seat. Go back and pick another.'
+          : 'That time was just booked by someone else. Go back and pick another.';
+      return null;
+    }
+    throw e;
+  }
+
+  try {
+    await sendConfirmation({
+      to,
+      clientName: name,
+      coachName: coach!.name,
+      bookingId: data.id,
+      startAt: c.startAt,
+      endAt: c.endAt,
+      notes: values.notes || null,
+      newAccount: tempPassword ? { tempPassword } : undefined,
+    });
+  } catch (err) {
+    console.error('confirmation email failed', err);
+  }
+
+  return redirect(loggedIn ? '/bookings?booked=1' : `/booked?new=${tempPassword ? 1 : 0}`);
+}
+
+if (request.method === 'POST') {
+  const form = await request.formData();
+  values = {
+    name: String(form.get('name') ?? '').trim(),
+    email: String(form.get('email') ?? '').trim(),
+    phone: String(form.get('phone') ?? '').trim(),
+    notes: String(form.get('notes') ?? '').trim().slice(0, 500),
+  };
+
+  if (String(form.get('website') ?? '')) {
+    return redirect('/booked?new=0'); // silently drop bots (honeypot filled)
+  }
+
+  if (loggedIn) {
+    const done = await createBooking(locals.user!.id, locals.user!.email!, values.name);
+    if (done) return done;
+  } else if (!values.name || !EMAIL_RE.test(values.email)) {
+    error = 'Please enter your name and a valid email address.';
+  } else {
+    try {
+      const acct = await findOrCreateClient({
+        email: values.email,
+        name: values.name,
+        phone: values.phone || null,
+      });
+      const done = await createBooking(acct.id, values.email, values.name, acct.tempPassword);
+      if (done) return done;
+    } catch (e) {
+      console.error('guest booking failed', e);
+      error = 'We could not complete your booking. Please try again.';
+    }
+  }
+}
+
+const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?variant=${ctx.variantId}&date=${date}`;
+---
+
+<Base title="Confirm your booking">
+  <a href={backHref} class="text-sm text-ink-soft hover:text-ink">← Back</a>
+
+  <h1 class="mt-3 text-3xl font-extrabold">Confirm your booking</h1>
+
+  <div class="mt-6 border-l-2 border-ball bg-white px-4 py-4">
+    <p class="tnum font-display text-xl font-bold">{fmtLong(ctx.startAt)}</p>
+    <p class="text-sm text-ink-soft">
+      {ctx.typeName} ·
+      {ctx.kind === 'appointment' ? ctx.variantName : `${ctx.durationMin} min`} ·
+      {coach.name} · {fmtPrice(ctx.priceCents)}
+    </p>
+    {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person — we'll mark it off.</p>}
+  </div>
+
+  {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+
+  <form method="POST" class="mt-6 flex flex-col gap-4">
+    <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
+
+    {
+      loggedIn ? (
+        <p class="text-sm text-ink-soft">
+          Booking as <strong class="text-ink">{locals.user!.email}</strong>.
+        </p>
+      ) : (
+        <>
+          <label class="text-sm">
+            <span class="font-semibold">Name</span>
+            <input
+              type="text"
+              name="name"
+              required
+              value={values.name}
+              autocomplete="name"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+          </label>
+          <label class="text-sm">
+            <span class="font-semibold">Email</span>
+            <input
+              type="email"
+              name="email"
+              required
+              value={values.email}
+              autocomplete="email"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+            <span class="mt-1 block text-xs text-ink-soft">
+              Your confirmation goes here, and we'll set up an account so you can manage the booking.
+            </span>
+          </label>
+          <label class="text-sm">
+            <span class="font-semibold">Phone</span>
+            <span class="text-ink-soft"> — optional</span>
+            <input
+              type="tel"
+              name="phone"
+              value={values.phone}
+              autocomplete="tel"
+              class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+            />
+          </label>
+        </>
+      )
+    }
+
+    <label class="text-sm">
+      <span class="font-semibold">Notes for {coach.name}</span>
+      <span class="text-ink-soft"> — optional</span>
+      <textarea
+        name="notes"
+        rows="2"
+        maxlength="500"
+        placeholder="Injuries, focus areas, first lesson…"
+        class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 placeholder:text-ink-soft/60 focus:border-ink focus:outline-none"
+        set:text={values.notes}
+      />
+    </label>
+
+    <button class="mt-1 w-fit rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">
+      Confirm booking
+    </button>
+  </form>
+</Base>

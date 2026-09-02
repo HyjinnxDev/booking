@@ -1,0 +1,134 @@
+---
+import Base from '../../layouts/Base.astro';
+import { listSessionTypes } from '../../lib/sessions';
+
+const { locals, url } = Astro;
+const coachId = locals.user!.id;
+const types = await listSessionTypes(coachId);
+const err = url.searchParams.get('error');
+
+const inputCls = 'rounded-lg border border-line bg-white px-2 py-1.5 text-sm focus:border-ink focus:outline-none';
+const btn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:opacity-90';
+const ghost = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink';
+---
+
+<Base title="Sessions">
+  <a href="/coach" class="text-sm text-ink-soft hover:text-ink">← Dashboard</a>
+  <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Sessions</h1>
+  <p class="mt-2 text-sm text-ink-soft">
+    <strong>Appointments</strong> — clients pick any open time; add an option per length.
+    <strong>Classes</strong> — you schedule dated sessions with seats on the
+    <a href="/coach/schedule" class="underline underline-offset-2">Schedule</a> page.
+  </p>
+  {err && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{err}</p>}
+
+  <div class="mt-8 space-y-4">
+    {
+      types.map((t) => (
+        <div class="overflow-hidden rounded-xl border border-line bg-paper">
+          <div class="border-b border-line bg-white p-4">
+            <form method="POST" action="/api/services" class="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="action" value="type.update" />
+              <input type="hidden" name="id" value={t.id} />
+              <span class="rounded-md bg-ink/5 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                {t.kind}
+              </span>
+              <input name="name" value={t.name} class={`${inputCls} font-semibold`} />
+              <input name="blurb" value={t.blurb ?? ''} placeholder="Short description" class={`${inputCls} grow`} />
+              <label class="flex items-center gap-1.5 text-sm text-ink-soft">
+                <input type="checkbox" name="active" checked={t.active} /> active
+              </label>
+              <button class={btn}>Save</button>
+            </form>
+          </div>
+
+          <div class="divide-y divide-line">
+            {t.variants.map((v) => (
+              <form method="POST" action="/api/services" class="flex flex-wrap items-center gap-2 p-3 text-sm">
+                <input type="hidden" name="action" value="variant.update" />
+                <input type="hidden" name="id" value={v.id} />
+                <input name="name" value={v.name} class={`${inputCls} w-32`} />
+                <label class="flex items-center gap-1 text-ink-soft">
+                  <input type="number" name="duration_min" value={v.duration_min} min="5" max="480" step="5" class={`${inputCls} w-20`} /> min
+                </label>
+                <label class="flex items-center gap-1 text-ink-soft">
+                  $<input type="number" name="price" value={(v.price_cents / 100).toString()} min="0" step="0.01" class={`${inputCls} w-24`} />
+                </label>
+                {t.kind === 'class' && (
+                  <label class="flex items-center gap-1 text-ink-soft">
+                    <input type="number" name="capacity" value={v.capacity} min="1" class={`${inputCls} w-16`} /> seats
+                  </label>
+                )}
+                {t.kind === 'appointment' && <input type="hidden" name="capacity" value="1" />}
+                <button class={ghost}>Save</button>
+                <button
+                  formaction="/api/services"
+                  name="action"
+                  value="variant.delete"
+                  class="text-ink-soft hover:text-ink"
+                  aria-label="Remove option"
+                >
+                  ×
+                </button>
+              </form>
+            ))}
+            {t.variants.length === 0 && (
+              <p class="p-3 text-sm text-ink-soft">No options yet — add one below.</p>
+            )}
+          </div>
+
+          {t.kind === 'appointment' && (
+            <form method="POST" action="/api/services" class="flex flex-wrap items-center gap-2 border-t border-line bg-white p-3 text-sm">
+              <input type="hidden" name="action" value="variant.add" />
+              <input type="hidden" name="session_type_id" value={t.id} />
+              <input type="hidden" name="capacity" value="1" />
+              <input name="name" required placeholder="30 min" class={`${inputCls} w-32`} />
+              <label class="flex items-center gap-1 text-ink-soft">
+                <input type="number" name="duration_min" required value="30" min="5" max="480" step="5" class={`${inputCls} w-20`} /> min
+              </label>
+              <label class="flex items-center gap-1 text-ink-soft">
+                $<input type="number" name="price" value="0" min="0" step="0.01" class={`${inputCls} w-24`} />
+              </label>
+              <button class={btn}>Add option</button>
+            </form>
+          )}
+
+          <div class="border-t border-line bg-white px-4 py-2">
+            <form method="POST" action="/api/services" onsubmit="return confirm('Delete this session type and its bookings history links?')">
+              <input type="hidden" name="action" value="type.delete" />
+              <input type="hidden" name="id" value={t.id} />
+              <button class="text-xs text-ink-soft hover:text-ink">Delete session type</button>
+            </form>
+          </div>
+        </div>
+      ))
+    }
+    {types.length === 0 && (
+      <p class="border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+        No session types yet.
+      </p>
+    )}
+  </div>
+
+  <h2 class="mt-12 text-xl font-bold">New session type</h2>
+  <form method="POST" action="/api/services" class="mt-3 flex flex-wrap items-end gap-2">
+    <input type="hidden" name="action" value="type.create" />
+    <label class="text-sm">
+      <span class="block text-ink-soft">Name</span>
+      <input name="name" required placeholder="Private lesson" class={`${inputCls} mt-1`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Kind</span>
+      <select name="kind" class={`${inputCls} mt-1`}>
+        <option value="appointment">Appointment (1:1)</option>
+        <option value="class">Class (group, seats)</option>
+      </select>
+    </label>
+    <label class="grow text-sm">
+      <span class="block text-ink-soft">Description — optional</span>
+      <input name="blurb" class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <button class={btn}>Create</button>
+  </form>
+  <p class="mt-2 text-xs text-ink-soft">A class starts with one editable option (60 min, 8 seats, free).</p>
+</Base>

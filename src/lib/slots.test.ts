@@ -1,11 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { computeSlots, weekdayOf, type AvailabilityRule } from './slots';
 
-// SLOT_MINUTES is 60 (see config.ts).
 const FIXED_NOW = new Date('2020-01-01T00:00:00Z'); // far in the past -> nothing filtered
+const HOUR = 60 * 60_000;
 
-function run(dateStr: string, tz: string, rules: AvailabilityRule[], extra: Partial<Parameters<typeof computeSlots>[0]> = {}) {
-  return computeSlots({ dateStr, tz, rules, bookedStartsUtc: [], isBlackout: false, now: FIXED_NOW, ...extra });
+function run(
+  dateStr: string,
+  tz: string,
+  rules: AvailabilityRule[],
+  extra: Partial<Parameters<typeof computeSlots>[0]> = {},
+) {
+  return computeSlots({
+    dateStr,
+    tz,
+    rules,
+    durationMin: 60,
+    stepMin: 60, // most tests want an hourly grid; the class-overlap test overrides
+    busy: [],
+    isBlackout: false,
+    now: FIXED_NOW,
+    ...extra,
+  });
 }
 
 describe('weekdayOf', () => {
@@ -40,14 +55,12 @@ describe('DST — America/New_York', () => {
     for (let i = 1; i < times.length; i++) {
       expect(times[i]).toBeGreaterThan(times[i - 1]);
     }
-    // 5 one-hour slots requested; the repeated wall hour collapses one.
     expect(slots.length).toBeGreaterThanOrEqual(4);
   });
 });
 
 describe('DST — Australia/Sydney', () => {
   const tz = 'Australia/Sydney';
-  // DST ends 2026-04-05 03:00 (AEDT +11 -> AEST +10).
   const sundayRule: AvailabilityRule[] = [{ weekday: 0, start_time: '08:00', end_time: '10:00' }];
 
   it('AEDT before: 08:00 local = 21:00 UTC previous day', () => {
@@ -65,10 +78,25 @@ describe('exclusions', () => {
   const tz = 'America/New_York';
   const rule: AvailabilityRule[] = [{ weekday: 1, start_time: '09:00', end_time: '12:00' }];
 
-  it('removes already-booked starts', () => {
+  it('removes starts that overlap a busy range', () => {
     const all = run('2026-03-09', tz, rule);
-    const withoutFirst = run('2026-03-09', tz, rule, { bookedStartsUtc: [all[0].startAt] });
+    const busy = [{ start: all[0].startAt, end: new Date(new Date(all[0].startAt).getTime() + HOUR).toISOString() }];
+    const withoutFirst = run('2026-03-09', tz, rule, { busy });
     expect(withoutFirst.map((s) => s.startAt)).toEqual(all.slice(1).map((s) => s.startAt));
+  });
+
+  it('a class occurrence blocks every appointment slot it overlaps', () => {
+    // 30-min grid, 60-min appointments; a 10:00–11:00 class kills the 09:30, 10:00, 10:30 starts.
+    const all = run('2026-03-09', tz, rule, { stepMin: 30 });
+    const classStart = new Date('2026-03-09T14:00:00.000Z'); // 10:00 EDT
+    const busy = [{ start: classStart.toISOString(), end: new Date(classStart.getTime() + HOUR).toISOString() }];
+    const open = run('2026-03-09', tz, rule, { stepMin: 30, busy }).map((s) => s.startAt);
+    expect(open).not.toContain('2026-03-09T13:30:00.000Z');
+    expect(open).not.toContain('2026-03-09T14:00:00.000Z');
+    expect(open).not.toContain('2026-03-09T14:30:00.000Z');
+    expect(open).toContain('2026-03-09T13:00:00.000Z');
+    expect(open).toContain('2026-03-09T15:00:00.000Z');
+    expect(all.length).toBeGreaterThan(open.length);
   });
 
   it('blackout day yields no slots', () => {
@@ -77,7 +105,6 @@ describe('exclusions', () => {
 
   it('filters slots at or before now', () => {
     const slots = run('2026-03-09', tz, rule, { now: new Date('2026-03-09T15:00:00.000Z') });
-    // 09:00 & 10:00 EDT (13:00, 14:00 UTC) are past; 11:00 EDT (15:00 UTC) is not > now.
     expect(slots).toEqual([]);
   });
 

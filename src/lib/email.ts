@@ -26,6 +26,8 @@ export interface BookingMail {
   startAt: string;
   endAt: string;
   notes?: string | null;
+  /** Present only on the first booking, when we just created the account. */
+  newAccount?: { tempPassword: string };
 }
 
 function event(m: BookingMail): IcsEvent {
@@ -45,12 +47,22 @@ function icsAttachment(ics: string) {
 function shell(body: string): string {
   return `<div style="font-family:system-ui,sans-serif;max-width:520px;line-height:1.5">${body}
     <hr style="border:none;border-top:1px solid #ddd;margin:24px 0">
-    <p style="color:#888;font-size:13px">${BRAND} · <a href="${SITE_URL}/bookings">Manage your bookings</a></p>
+    <p style="color:#888;font-size:13px">${BRAND} · tennis coaching</p>
   </div>`;
 }
 
 export async function sendConfirmation(m: BookingMail) {
   const ics = bookingIcs(event(m), { method: 'REQUEST' });
+  const account = m.newAccount
+    ? `<p style="background:#f4f4f2;border-radius:8px;padding:12px 14px">
+         We set up an account so you can view or cancel this booking.<br>
+         Sign in at <a href="${SITE_URL}/login">${SITE_URL.replace(/^https?:\/\//, '')}/login</a>
+         with this email and the temporary password
+         <strong style="font-family:ui-monospace,monospace">${m.newAccount.tempPassword}</strong>.
+         Change it once you're in.
+       </p>`
+    : `<p>Manage or cancel this booking at
+         <a href="${SITE_URL}/bookings">${SITE_URL.replace(/^https?:\/\//, '')}/bookings</a>.</p>`;
   return send({
     from: FROM,
     to: m.to,
@@ -60,7 +72,8 @@ export async function sendConfirmation(m: BookingMail) {
        <p>Your tennis session with <strong>${m.coachName}</strong> is confirmed:</p>
        <p style="font-size:18px"><strong>${fmtLong(m.startAt)}</strong></p>
        ${m.notes ? `<p>Your notes: ${m.notes}</p>` : ''}
-       <p>The attached file adds it to your calendar. To cancel, use the link below.</p>`,
+       <p>The attached file adds it to your calendar.</p>
+       ${account}`,
     ),
     attachments: icsAttachment(ics),
   });
