@@ -37,17 +37,23 @@ const afterAction = (verb: 'cancelled' | 'rescheduled') =>
   isStaff ? `/coach?${verb}=1` : backToApp ? `/bookings?${verb}=1` : `/m/${id}?done=${verb}`;
 
 const isAppointment = booking ? !booking.class_occurrence_id && !!booking.session_variant_id : false;
-const variant = isAppointment ? await getVariant(booking!.session_variant_id!) : null;
+const variant = booking?.session_variant_id ? await getVariant(booking.session_variant_id) : null;
 
-const cancelled = booking?.status === 'cancelled';
+const cancelled = booking?.status !== 'confirmed'; // cancelled or no_show
 const past = booking ? new Date(booking.start_at).getTime() <= Date.now() : true;
 const noticeLocked = booking
   ? new Date(booking.start_at).getTime() <= Date.now() + MIN_NOTICE_MIN * 60_000
   : true;
-// Staff bypass the "too close / already passed" locks — they field the phone call
+// Per-service cancel cutoff (hours before start). 0 = cancel any time.
+const cutoffH = (variant?.type as any)?.cancel_cutoff_hours ?? 0;
+const cutoffLocked = booking
+  ? new Date(booking.start_at).getTime() <= Date.now() + cutoffH * 3600_000
+  : true;
+// Staff bypass every "too close / already passed" lock — they field the phone call
 // at 9am to move a 10am booking, or clean up a no-show.
-const canCancel = !!booking && !cancelled && (isStaff || !past);
-const canReschedule = !!booking && isAppointment && !!variant && !cancelled && (isStaff || !noticeLocked);
+const canCancel = !!booking && !cancelled && (isStaff || (!past && !cutoffLocked));
+const canReschedule =
+  !!booking && isAppointment && !!variant && !cancelled && (isStaff || !noticeLocked);
 
 const today = todayStr();
 const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
@@ -229,12 +235,16 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                 ) : isStaff ? null : (
                   <span class="text-sm text-ink-soft">Too close to the session to reschedule online — contact {coach?.name ?? 'your coach'}.</span>
                 ))}
-              {canCancel && (
+              {canCancel ? (
                 <form method="POST" onsubmit="return confirm('Cancel this booking?')">
                   <input type="hidden" name="action" value="cancel" />
                   <button class="rounded-lg border border-line px-4 py-2 text-sm hover:border-ink">Cancel booking</button>
                 </form>
-              )}
+              ) : !isStaff && !past && cutoffLocked ? (
+                <span class="text-sm text-ink-soft">
+                  Too close to the session to cancel online — contact {coach?.name ?? 'your coach'}.
+                </span>
+              ) : null}
             </div>
           ))
         }

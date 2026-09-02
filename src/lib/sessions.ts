@@ -22,6 +22,8 @@ export interface SessionType {
   sort: number;
   location_id: string;
   location: { id: string; name: string; address: string | null } | null;
+  intake_fields: unknown;
+  cancel_cutoff_hours: number;
   variants: Variant[];
 }
 
@@ -34,7 +36,7 @@ export interface Occurrence {
   waiting: number;
   series_id: string | null;
   variant: Variant;
-  type: Pick<SessionType, 'id' | 'name' | 'blurb' | 'location'>;
+  type: Pick<SessionType, 'id' | 'name' | 'blurb' | 'location' | 'intake_fields' | 'cancel_cutoff_hours'>;
 }
 
 const VARIANT_COLS = 'id, name, duration_min, price_cents, capacity, active, sort';
@@ -48,7 +50,7 @@ export async function listSessionTypes(
   let q = db
     .from('session_types')
     .select(
-      `id, coach_id, name, blurb, kind, active, sort, location_id,
+      `id, coach_id, name, blurb, kind, active, sort, location_id, intake_fields, cancel_cutoff_hours,
        location:location_id ( id, name, address ),
        session_variants ( ${VARIANT_COLS} )`,
     )
@@ -74,7 +76,7 @@ export async function getVariant(
   const { data } = await db
     .from('session_variants')
     .select(
-      `${VARIANT_COLS}, type:session_types ( id, coach_id, name, blurb, kind, active, sort, location_id, location:location_id ( id, name, address ) )`,
+      `${VARIANT_COLS}, type:session_types ( id, coach_id, name, blurb, kind, active, sort, location_id, intake_fields, cancel_cutoff_hours, location:location_id ( id, name, address ) )`,
     )
     .eq('id', id)
     .maybeSingle();
@@ -92,7 +94,7 @@ export async function upcomingOccurrences(opts: {
     .from('class_occurrences')
     .select(
       `id, start_at, end_at, capacity, series_id,
-       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, location:location_id ( id, name, address ) ) )`,
+       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, intake_fields, cancel_cutoff_hours, location:location_id ( id, name, address ) ) )`,
     )
     .eq('status', 'scheduled')
     .gte('start_at', (opts.from ?? new Date()).toISOString())
@@ -139,7 +141,7 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
     .from('class_occurrences')
     .select(
       `id, start_at, end_at, capacity, series_id, status,
-       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, location:location_id ( id, name, address ) ) )`,
+       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, intake_fields, cancel_cutoff_hours, location:location_id ( id, name, address ) ) )`,
     )
     .eq('id', id)
     .maybeSingle();

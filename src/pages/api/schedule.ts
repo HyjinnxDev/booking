@@ -146,6 +146,16 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       return redirect(s('back') || '/coach');
     }
 
+    case 'booking.noshow': {
+      await db
+        .from('bookings')
+        .update({ status: 'no_show' })
+        .eq('id', s('id'))
+        .eq('coach_id', user.id)
+        .eq('status', 'confirmed');
+      return redirect(s('back') || '/coach');
+    }
+
     default:
       return redirect(BACK);
   }

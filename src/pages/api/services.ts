@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { parsePrice } from '../../lib/format';
+import { parseIntakeFields } from '../../lib/intake';
 
 const STAFF = new Set(['coach', 'admin']);
 const BACK = '/coach/services';
@@ -44,6 +45,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     }
 
     case 'type.update': {
+      const cutoff = Math.max(0, Math.min(720, Number(form.get('cancel_cutoff_hours')) || 0));
       const { error } = await supabase
         .from('session_types')
         .update({
@@ -51,8 +53,38 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
           blurb: s('blurb').slice(0, 300) || null,
           active: form.get('active') === 'on',
           location_id: s('location_id') || undefined,
+          cancel_cutoff_hours: cutoff,
         })
         .eq('id', s('id'));
+      if (error) return fail(error.message);
+      return redirect(BACK);
+    }
+
+    case 'intake.add': {
+      const { data: t } = await supabase
+        .from('session_types')
+        .select('intake_fields')
+        .eq('id', s('id'))
+        .maybeSingle();
+      const label = s('label').slice(0, 120);
+      if (!label) return fail('The question needs a label.');
+      const kind = ['text', 'textarea', 'checkbox'].includes(s('kind')) ? s('kind') : 'text';
+      const next = parseIntakeFields((t as any)?.intake_fields);
+      next.push({ label, type: kind as any, required: form.get('required') === 'on' });
+      const { error } = await supabase.from('session_types').update({ intake_fields: next }).eq('id', s('id'));
+      if (error) return fail(error.message);
+      return redirect(BACK);
+    }
+
+    case 'intake.remove': {
+      const { data: t } = await supabase
+        .from('session_types')
+        .select('intake_fields')
+        .eq('id', s('id'))
+        .maybeSingle();
+      const idx = Number(form.get('index'));
+      const next = parseIntakeFields((t as any)?.intake_fields).filter((_, i) => i !== idx);
+      const { error } = await supabase.from('session_types').update({ intake_fields: next }).eq('id', s('id'));
       if (error) return fail(error.message);
       return redirect(BACK);
     }

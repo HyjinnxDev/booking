@@ -14,7 +14,7 @@ const flash = url.searchParams.get('cancelled') ? 'Booking cancelled — the cli
 const [{ data: apptRows }, { data: classBookings }, occ, { data: me }] = await Promise.all([
   locals.supabase
     .from('bookings')
-    .select('id, start_at, notes, price_cents, payment_status, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )')
+    .select('id, start_at, notes, intake, price_cents, payment_status, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )')
     .eq('coach_id', coachId)
     .eq('status', 'confirmed')
     .is('class_occurrence_id', null)
@@ -22,7 +22,7 @@ const [{ data: apptRows }, { data: classBookings }, occ, { data: me }] = await P
     .order('start_at'),
   locals.supabase
     .from('bookings')
-    .select('id, class_occurrence_id, price_cents, payment_status, client:client_id ( name, email, phone )')
+    .select('id, class_occurrence_id, intake, price_cents, payment_status, client:client_id ( name, email, phone )')
     .eq('coach_id', coachId)
     .eq('status', 'confirmed')
     .not('class_occurrence_id', 'is', null),
@@ -52,6 +52,8 @@ const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-i
       <a href="/coach/schedule" class="text-ink underline underline-offset-2">Schedule</a>
       <a href="/coach/availability" class="text-ink underline underline-offset-2">Availability</a>
       <a href="/coach/locations" class="text-ink underline underline-offset-2">Locations</a>
+      <a href="/coach/passes" class="text-ink underline underline-offset-2">Passes</a>
+      <a href="/coach/calendar" class="text-ink underline underline-offset-2">Calendar</a>
     </nav>
   </div>
 
@@ -86,8 +88,19 @@ const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-i
                 </form>
               )}
               <a href={`/m/${b.id}`} class={payBtn}>Manage</a>
+              <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark this client as a no-show?')">
+                <input type="hidden" name="action" value="booking.noshow" />
+                <input type="hidden" name="id" value={b.id} />
+                <button class={payBtn}>No-show</button>
+              </form>
             </p>
             {b.notes && <p class="mt-1 text-sm text-ink-soft">{b.notes}</p>}
+            {b.intake &&
+              Object.entries(b.intake).map(([k, v]) => (
+                <p class="mt-1 text-xs text-ink-soft">
+                  <span class="font-semibold">{k}:</span> {v === true ? 'yes' : String(v)}
+                </p>
+              ))}
           </li>
         ))}
       </ul>
@@ -134,6 +147,13 @@ const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-i
                         )}
                         <a href={`/m/${b.id}`} class={payBtn}>Manage</a>
                       </span>
+                      {b.intake && (
+                        <span class="w-full text-xs text-ink-soft">
+                          {Object.entries(b.intake)
+                            .map(([k, v]) => `${k}: ${v === true ? 'yes' : String(v)}`)
+                            .join(' · ')}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>

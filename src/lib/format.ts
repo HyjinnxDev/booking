@@ -16,6 +16,11 @@ export function todayStr(): string {
   return formatInTimeZone(new Date(), BUSINESS_TZ, 'yyyy-MM-dd');
 }
 
+/** The business-local calendar date (YYYY-MM-DD) for a UTC instant. */
+export function localDay(iso: string): string {
+  return formatInTimeZone(new Date(iso), BUSINESS_TZ, 'yyyy-MM-dd');
+}
+
 /** Add days to a YYYY-MM-DD string. */
 export function addDaysStr(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T12:00:00Z`);

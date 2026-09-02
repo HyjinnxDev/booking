@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import { fmtLong, fmtPrice } from '../lib/format';
+import { activePassesForClient } from '../lib/passes';
 
 const { locals, url, request } = Astro;
 const user = locals.user!; // middleware guarantees auth on /bookings
@@ -26,6 +27,8 @@ const { data: rows } = await supabase
   )
   .eq('client_id', user.id)
   .order('start_at', { ascending: true });
+
+const passes = await activePassesForClient(user.id);
 
 const now = Date.now();
 const bookings = (rows ?? []) as any[];
@@ -79,6 +82,22 @@ const chip = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink
     </form>
     {profileError && <p class="border-t border-line px-4 py-2 text-sm text-red-600">{profileError}</p>}
   </details>
+
+  {
+    passes.length > 0 && (
+      <div class="mt-4 rounded-xl border border-line bg-white px-4 py-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-soft">Your passes</p>
+        <ul class="mt-2 space-y-1 text-sm">
+          {passes.map((p) => (
+            <li>
+              {p.name} — <span class="font-semibold">{p.total - p.used}</span> of {p.total} left
+              {p.expires_at ? <span class="text-ink-soft"> · expires {p.expires_at}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
 
   <p class="mt-8 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">Upcoming</p>
   {

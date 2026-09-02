@@ -1,0 +1,108 @@
+---
+import Base from '../../layouts/Base.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { listSessionTypes } from '../../lib/sessions';
+import { fmtPrice } from '../../lib/format';
+
+const { locals, url } = Astro;
+const coachId = locals.user!.id;
+const db = createSupabaseAdmin();
+
+const [types, { data: passRows }] = await Promise.all([
+  listSessionTypes(coachId),
+  db
+    .from('passes')
+    .select('id, name, total, used, price_cents, status, expires_at, session_type_id, client:client_id ( name, email )')
+    .order('created_at', { ascending: false }),
+]);
+const passes = (passRows ?? []) as any[];
+const typeName = (id: string | null) => (id ? types.find((t) => t.id === id)?.name ?? 'Unknown' : 'Any session');
+
+const err = url.searchParams.get('error');
+const issued = url.searchParams.get('issued');
+
+const inputCls = 'rounded-lg border border-line bg-white px-2 py-1.5 text-sm focus:border-ink focus:outline-none';
+const btn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:opacity-90';
+---
+
+<Base title="Passes">
+  <a href="/coach" class="text-sm text-ink-soft hover:text-ink">← Dashboard</a>
+  <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Passes &amp; packs</h1>
+  <p class="mt-2 text-sm text-ink-soft">
+    Sell a bundle of sessions in person, then issue it here. The client picks it at checkout and the
+    balance ticks down. Cancelling a covered booking returns the credit.
+  </p>
+
+  {err && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{err}</p>}
+  {issued && <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">Pass issued.</p>}
+
+  <form method="POST" action="/api/passes" class="mt-8 grid gap-2 rounded-xl border border-line bg-white p-4 sm:grid-cols-2">
+    <input type="hidden" name="action" value="pass.issue" />
+    <label class="text-sm">
+      <span class="block text-ink-soft">Client name</span>
+      <input name="client_name" required class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Client email</span>
+      <input name="client_email" type="email" required class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Pass name</span>
+      <input name="name" required placeholder="10-class pack" class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Covers</span>
+      <select name="session_type_id" class={`${inputCls} mt-1 w-full`}>
+        <option value="">Any session</option>
+        {types.map((t) => <option value={t.id}>{t.name}</option>)}
+      </select>
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Sessions</span>
+      <input name="total" type="number" required value="10" min="1" max="100" class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Price paid — optional</span>
+      <input name="price" type="number" min="0" step="0.01" placeholder="0" class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <label class="text-sm">
+      <span class="block text-ink-soft">Expires — optional</span>
+      <input name="expires_at" type="date" class={`${inputCls} mt-1 w-full`} />
+    </label>
+    <div class="flex items-end">
+      <button class={btn}>Issue pass</button>
+    </div>
+  </form>
+
+  <h2 class="mt-12 text-xl font-bold">Issued</h2>
+  {
+    passes.length === 0 ? (
+      <p class="mt-3 text-sm text-ink-soft">None yet.</p>
+    ) : (
+      <ul class="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
+        {passes.map((p) => (
+          <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <div>
+              <p class="font-semibold">
+                {p.client?.name || p.client?.email}
+                <span class="ml-2 font-normal text-ink-soft">{p.name}</span>
+              </p>
+              <p class="text-xs text-ink-soft">
+                {typeName(p.session_type_id)} · {p.total - p.used}/{p.total} left · {fmtPrice(p.price_cents)}
+                {p.expires_at ? ` · expires ${p.expires_at}` : ''}
+                {p.status === 'void' ? ' · VOID' : ''}
+              </p>
+            </div>
+            {p.status === 'active' && (
+              <form method="POST" action="/api/passes" onsubmit="return confirm('Void this pass?')">
+                <input type="hidden" name="action" value="pass.void" />
+                <input type="hidden" name="id" value={p.id} />
+                <button class="rounded-lg border border-line px-3 py-1.5 text-xs hover:border-ink">Void</button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</Base>

@@ -8,6 +8,8 @@ import { findOrCreateClient } from '../lib/accounts';
 import { sendConfirmation } from '../lib/email';
 import { fmtLong, fmtPrice, todayStr, addDaysStr } from '../lib/format';
 import { BOOKING_WINDOW_DAYS, MIN_NOTICE_MIN } from '../lib/config';
+import { parseIntakeFields, collectIntake, type IntakeField } from '../lib/intake';
+import { activePassesForClient, passCovers } from '../lib/passes';
 
 const { locals, url, redirect, request } = Astro;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -34,6 +36,7 @@ interface BookCtx {
   occId?: string;
   locationName?: string;
   locationAddress?: string | null;
+  intakeFields: IntakeField[];
 }
 
 let ctx: BookCtx | null = null;
@@ -57,6 +60,7 @@ if (occId) {
     occId: occ.id,
     locationName: occ.type.location?.name,
     locationAddress: occ.type.location?.address,
+    intakeFields: parseIntakeFields(occ.type.intake_fields),
   };
 } else if (variantId) {
   const v = await getVariant(variantId);
@@ -78,6 +82,7 @@ if (occId) {
     endAt: new Date(new Date(startAtParam).getTime() + v.duration_min * 60_000).toISOString(),
     locationName: v.type.location?.name,
     locationAddress: v.type.location?.address,
+    intakeFields: parseIntakeFields(v.type.intake_fields),
   };
 } else {
   return redirect('/');
@@ -86,10 +91,17 @@ if (occId) {
 const loggedIn = !!locals.user;
 let values = { name: locals.profile?.name ?? '', email: locals.user?.email ?? '', phone: '', notes: '' };
 let error = '';
+let intakeAnswers: Record<string, string | boolean> = {};
+let chosenPassId = '';
+
+const myPasses = loggedIn
+  ? (await activePassesForClient(locals.user!.id)).filter((p) => passCovers(p, ctx.typeId))
+  : [];
 
 async function createBooking(clientId: string, to: string, name: string, tempPassword?: string) {
   const db = createSupabaseAdmin();
   const c = ctx!;
+  const usePass = chosenPassId && myPasses.some((p) => p.id === chosenPassId);
   const { data, error: e } = await db
     .from('bookings')
     .insert({
@@ -103,11 +115,17 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
       class_occurrence_id: c.occId ?? null,
       price_cents: c.priceCents,
       payment_status: c.priceCents === 0 ? 'free' : 'unpaid',
+      intake: Object.keys(intakeAnswers).length ? intakeAnswers : null,
+      pass_id: usePass ? chosenPassId : null,
     })
     .select('id')
     .single();
 
   if (e) {
+    if (e.code === '23514') {
+      error = "That pass couldn't be applied — go back and book without it.";
+      return null;
+    }
     if (e.code === '23505') {
       error =
         c.kind === 'class'
@@ -149,7 +167,11 @@ if (request.method === 'POST') {
     return redirect('/booked?new=0'); // silently drop bots (honeypot filled)
   }
 
-  if (loggedIn) {
+  const intake = collectIntake(ctx.intakeFields, form);
+  intakeAnswers = intake.answers;
+  chosenPassId = String(form.get('pass_id') ?? '');
+  if (intake.error) error = intake.error;
+  else if (loggedIn) {
     const done = await createBooking(locals.user!.id, locals.user!.email!, values.name);
     if (done) return done;
   } else if (!values.name || !EMAIL_RE.test(values.email)) {
@@ -242,6 +264,59 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
             />
           </label>
         </>
+      )
+    }
+
+    {
+      ctx.intakeFields.map((f) =>
+        f.type === 'checkbox' ? (
+          <label class="flex items-start gap-2 text-sm">
+            <input type="checkbox" name={`intake:${f.label}`} class="mt-0.5" />
+            <span>
+              {f.label}
+              {f.required && <span class="text-red-500"> *</span>}
+            </span>
+          </label>
+        ) : (
+          <label class="text-sm">
+            <span class="font-semibold">{f.label}</span>
+            {f.required && <span class="text-red-500"> *</span>}
+            {f.type === 'textarea' ? (
+              <textarea
+                name={`intake:${f.label}`}
+                rows="2"
+                maxlength="1000"
+                class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+              />
+            ) : (
+              <input
+                type="text"
+                name={`intake:${f.label}`}
+                maxlength="1000"
+                class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+              />
+            )}
+          </label>
+        ),
+      )
+    }
+
+    {
+      myPasses.length > 0 && (
+        <label class="text-sm">
+          <span class="font-semibold">Payment</span>
+          <select
+            name="pass_id"
+            class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 focus:border-ink focus:outline-none"
+          >
+            <option value="">{ctx.priceCents > 0 ? `Pay in person — ${fmtPrice(ctx.priceCents)}` : 'No payment needed'}</option>
+            {myPasses.map((p) => (
+              <option value={p.id}>
+                Use “{p.name}” — {p.total - p.used} of {p.total} left
+              </option>
+            ))}
+          </select>
+        </label>
       )
     }
 

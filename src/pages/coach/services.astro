@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import { listSessionTypes } from '../../lib/sessions';
 import { listLocations } from '../../lib/locations';
+import { parseIntakeFields } from '../../lib/intake';
 
 const { locals, url } = Astro;
 const coachId = locals.user!.id;
@@ -46,10 +47,55 @@ const ghost = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-in
                   ))}
                 </select>
               )}
+              <label class="flex items-center gap-1 text-sm text-ink-soft">
+                cancel cutoff
+                <input
+                  type="number"
+                  name="cancel_cutoff_hours"
+                  value={t.cancel_cutoff_hours}
+                  min="0"
+                  max="720"
+                  class={`${inputCls} w-16`}
+                /> h
+              </label>
               <label class="flex items-center gap-1.5 text-sm text-ink-soft">
                 <input type="checkbox" name="active" checked={t.active} /> active
               </label>
               <button class={btn}>Save</button>
+            </form>
+          </div>
+
+          <div class="border-b border-line bg-white px-4 py-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-ink-soft">Booking questions</p>
+            <ul class="mt-2 space-y-1">
+              {parseIntakeFields(t.intake_fields).map((f, i) => (
+                <li class="flex items-center gap-2 text-sm">
+                  <span>{f.label}</span>
+                  <span class="text-xs text-ink-soft">
+                    {f.type}{f.required ? ' · required' : ''}
+                  </span>
+                  <form method="POST" action="/api/services">
+                    <input type="hidden" name="action" value="intake.remove" />
+                    <input type="hidden" name="id" value={t.id} />
+                    <input type="hidden" name="index" value={i} />
+                    <button class="text-ink-soft hover:text-ink" aria-label="Remove question">×</button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+            <form method="POST" action="/api/services" class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <input type="hidden" name="action" value="intake.add" />
+              <input type="hidden" name="id" value={t.id} />
+              <input name="label" required placeholder="Any injuries?" class={`${inputCls} grow`} />
+              <select name="kind" class={inputCls}>
+                <option value="text">short text</option>
+                <option value="textarea">long text</option>
+                <option value="checkbox">checkbox / waiver</option>
+              </select>
+              <label class="flex items-center gap-1 text-ink-soft">
+                <input type="checkbox" name="required" /> required
+              </label>
+              <button class={ghost}>Add question</button>
             </form>
           </div>
 

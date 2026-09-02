@@ -52,18 +52,29 @@ Stripe/online payments deferred by request — still parked in Tier 0.
    (name + phone edit, RLS-scoped update on `profiles`), every row shows session type /
    variant / price / paid status, and completed appointments get a "Book again" link to
    the session-type page. Verified E2E. *Later:* email change (auth-managed), PDF receipts.
-5. [ ] **Intake forms / booking questions** — per-service custom fields captured at
-   booking, shown on the roster (injuries, level, waiver tick).
-6. [ ] **Packages / class passes** — buy N sessions, redeem at booking, balance on the
-   account. First real revenue feature for a coaching business.
-7. [ ] **Cancellation policy + no-show** — per-service cancel cutoff, no-show flag on the
-   roster, (fees once Stripe lands).
-8. [ ] **SMS notifications (Twilio)** — confirm / reminder / waitlist-opening. Reminder
-   timing configurable (24h + 2h) instead of the single daily cron.
-9. [ ] **Admin calendar view** — one day/week agenda across all bookings + classes +
-   blackouts, with create/edit/cancel and walk-in booking.
-10. [ ] **RLS org-scoping** — scope every policy to `current_org_id()`, resolve org from
-    request host, drop the column defaults. Finishes the multi-tenant seam (WL).
+5. [x] **Intake forms / booking questions** — `session_types.intake_fields` (jsonb),
+   coach edits them on `/coach/services` (text / long-text / checkbox, required flag),
+   `/book` renders + validates them, answers land on `bookings.intake` and show on the
+   roster. Migration `0010`. Verified E2E.
+6. [x] **Packages / class passes** — `passes` table, `/coach/passes` issues one to a
+   client (any session or one type, count, price, expiry). `/book` offers a matching
+   pass; a DB trigger redeems it (price → 0, `payment_status` paid) race-safely and a
+   cancel hands the credit back. Balances show on `/bookings`. Migration `0011`.
+   Verified E2E incl. the refund. *Later:* Stripe self-serve purchase.
+7. [x] **Cancellation policy + no-show** — `session_types.cancel_cutoff_hours`; `/m/<id>`
+   blocks a client cancel inside the window (staff bypass), `no_show` is a third booking
+   status set from a roster button. Migration `0010`. Verified E2E. *Later:* no-show fee
+   (needs Stripe).
+8. [—] **SMS notifications** — skipped by request (no new subscription).
+9. [x] **Admin calendar** — `/coach/calendar`, day/week agenda merging appointments +
+   classes + blackouts, prev/next nav, each item links to `/m/<id>` or the schedule
+   page. Walk-in booking: pick session + date → open-slot buttons + client name/email →
+   `/api/walkin` books it and emails the client. Verified E2E. *Later:* drag-to-move,
+   edit blackouts inline, off-grid times.
+10. [~] **RLS org-scoping** — migration `0012` closes the real hole (blanket `UPDATE`
+    grant on `profiles` → scoped to `(name, phone)`). Full activation — every policy →
+    `current_org_id()`, org resolved from request host, column defaults dropped, a
+    cross-tenant read test — is the multi-tenant switch-on; do it with a real 2nd tenant.
 
 ## ⚠ Flags / roadblocks from round 1
 

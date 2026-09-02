@@ -37,6 +37,10 @@ Vercel at `bookings.technicourt.com`.
 - **Class waitlist** — join a full class; a freed seat emails every waitlister
 - Second cron `/api/cron/topup` — extends weekly class series to `SERIES_WEEKS` ahead
 - `resources` (courts) table + conflict constraints exist but aren't wired to booking yet
+- **Intake questions** per session type (`/coach/services`) — captured at booking, shown on the roster
+- **Passes / packs** (`/coach/passes`) — issue a bundle, client redeems at checkout, cancel refunds the credit
+- **Cancel cutoff** per session type + a **no-show** status set from the roster
+- **Coach calendar** (`/coach/calendar`) — day/week agenda + walk-in booking
 
 See `ROADMAP.md` for what's next and the open flags.
 
