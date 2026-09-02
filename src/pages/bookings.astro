@@ -49,15 +49,14 @@ const rescheduled = url.searchParams.get('rescheduled') === '1';
             <div class="flex shrink-0 items-center gap-2">
               {!b.class_occurrence_id && (
                 <a
-                  href={`/reschedule?id=${b.id}`}
+                  href={`/m/${b.id}?reschedule=1`}
                   class="rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink"
                 >
                   Reschedule
                 </a>
               )}
-              <form method="POST" action="/api/bookings">
+              <form method="POST" action={`/m/${b.id}`} onsubmit="return confirm('Cancel this booking?')">
                 <input type="hidden" name="action" value="cancel" />
-                <input type="hidden" name="id" value={b.id} />
                 <button class="rounded-lg border border-line px-3 py-1.5 text-sm hover:border-ink">Cancel</button>
               </form>
             </div>

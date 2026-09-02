@@ -47,6 +47,15 @@ function icsAttachment(ics: string) {
   return [{ filename: 'booking.ics', content: Buffer.from(ics, 'utf8').toString('base64') }];
 }
 
+// The booking id doubles as the manage-link token — no login needed.
+function manageUrl(bookingId: string): string {
+  return `${SITE_URL}/m/${bookingId}`;
+}
+
+function manageLine(bookingId: string, verb = 'Reschedule or cancel'): string {
+  return `<p>${verb} this booking: <a href="${manageUrl(bookingId)}">${manageUrl(bookingId).replace(/^https?:\/\//, '')}</a></p>`;
+}
+
 function shell(body: string): string {
   return `<div style="font-family:system-ui,sans-serif;max-width:520px;line-height:1.5">${body}
     <hr style="border:none;border-top:1px solid #ddd;margin:24px 0">
@@ -58,14 +67,12 @@ export async function sendConfirmation(m: BookingMail) {
   const ics = bookingIcs(event(m), { method: 'REQUEST' });
   const account = m.newAccount
     ? `<p style="background:#f4f4f2;border-radius:8px;padding:12px 14px">
-         We set up an account so you can view or cancel this booking.<br>
-         Sign in at <a href="${SITE_URL}/login">${SITE_URL.replace(/^https?:\/\//, '')}/login</a>
+         We also set up an account so you can see all your bookings in one place — sign in at
+         <a href="${SITE_URL}/login">${SITE_URL.replace(/^https?:\/\//, '')}/login</a>
          with this email and the temporary password
          <strong style="font-family:ui-monospace,monospace">${m.newAccount.tempPassword}</strong>.
-         Change it once you're in.
        </p>`
-    : `<p>Manage or cancel this booking at
-         <a href="${SITE_URL}/bookings">${SITE_URL.replace(/^https?:\/\//, '')}/bookings</a>.</p>`;
+    : '';
   return send({
     from: FROM,
     to: m.to,
@@ -76,6 +83,7 @@ export async function sendConfirmation(m: BookingMail) {
        <p style="font-size:18px"><strong>${fmtLong(m.startAt)}</strong></p>
        ${m.notes ? `<p>Your notes: ${m.notes}</p>` : ''}
        <p>The attached file adds it to your calendar.</p>
+       ${manageLine(m.bookingId)}
        ${account}`,
     ),
     attachments: icsAttachment(ics),
@@ -94,7 +102,7 @@ export async function sendReschedule(m: BookingMail) {
        <p style="font-size:18px"><strong>${fmtLong(m.startAt)}</strong></p>
        ${m.notes ? `<p>Your notes: ${m.notes}</p>` : ''}
        <p>The attached file updates it in your calendar.</p>
-       <p>Manage this booking at <a href="${SITE_URL}/bookings">${SITE_URL.replace(/^https?:\/\//, '')}/bookings</a>.</p>`,
+       ${manageLine(m.bookingId)}`,
     ),
     attachments: icsAttachment(ics),
   });
@@ -146,7 +154,7 @@ export async function sendReminder(m: BookingMail) {
        <p>A reminder that your session with <strong>${m.coachName}</strong> is coming up:</p>
        <p style="font-size:18px"><strong>${fmtLong(m.startAt)}</strong></p>
        ${m.notes ? `<p>Your notes: ${m.notes}</p>` : ''}
-       <p>Need to cancel? Use the link below.</p>`,
+       ${manageLine(m.bookingId, 'Reschedule or cancel')}`,
     ),
     attachments: icsAttachment(ics),
   });

@@ -13,8 +13,8 @@ Stripe/online payments deferred by request — still parked in Tier 0.
 1. [x] **`org_id` seam** — migration `0005`. Zero behaviour change.
 2. [~] **Vercel deploy green** — region pinned to `syd1`, second cron registered.
    **BLOCKED:** env vars must be set in the Vercel dashboard (no MCP/API path). See flags below.
-3. [x] **Reschedule flow** — `/reschedule` (appointments), migration `0006` adds
-   `ics_sequence`, emails an `.ics` UPDATE. Verified end-to-end in the browser.
+3. [x] **Reschedule flow** — migration `0006` adds `ics_sequence`, emails an `.ics`
+   UPDATE. (Round 2 folded the page into `/m/<id>`.)
 4. [x] **Class cancellation → notify** — `occ.cancel` / `series.cancel` now email every
    confirmed attendee (best-effort). Refunds wait for Stripe.
 5. [x] **Recurring class top-up cron** — `/api/cron/topup`, daily `30 8 * * *`.
@@ -37,11 +37,13 @@ Stripe/online payments deferred by request — still parked in Tier 0.
    `bookings.technicourt.com` (region `syd1`). *Preview* env still lacks the two
    `PUBLIC_SUPABASE_*` vars, so branch previews fail — set them (tick Preview) only if
    branch previews are wanted; production is fine.
-2. [ ] **Guest reschedule + magic link** — right now only logged-in clients can reschedule;
-   guests (the common case) can't. Token link in the confirmation email → a no-login
-   manage page (reschedule + cancel).
-3. [ ] **Coach/admin reschedule + move any booking** — staff can only cancel from the
-   dashboard today. Let them drag/edit a booking's time, and reschedule on a client's behalf.
+2. [x] **Guest manage page (`/m/<id>`)** — booking id = link token, no login. Reschedule
+   (appointments) + cancel; linked from the confirmation / reschedule / reminder emails
+   and from `/bookings`. Replaces `/reschedule` and `/api/bookings`. Verified E2E
+   (token cancel with no session, reschedule, not-found state). Any token holder — incl.
+   staff — can manage, which also covers most of item 3.
+3. [ ] **Coach/admin: move any booking from the dashboard** — inline reschedule/edit on
+   the coach calendar (the `/m/<id>` link already lets staff act on a client's behalf).
 4. [ ] **Customer account area** — real profile edit, full history, one-click rebook,
    receipts. `/bookings` is thin.
 5. [ ] **Intake forms / booking questions** — per-service custom fields captured at

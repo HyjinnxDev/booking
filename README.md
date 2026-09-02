@@ -28,7 +28,8 @@ Vercel at `bookings.technicourt.com`.
 ## Since v1 (branch `feature/platform-buildout`)
 
 - `org_id` on every table (single-org seam for white-label; RLS not scoped yet)
-- **Reschedule** appointments in place (`/reschedule`) — re-sends the `.ics` as an update
+- **Manage a booking without logging in** (`/m/<id>`) — the booking id is the link
+  token; reschedule (appointments) + cancel, from the confirmation email or `/bookings`
 - Class cancellation now **emails every attendee**
 - **Min notice** (`MIN_NOTICE_MIN`, 120 min) enforced server-side, not just hidden in the UI
 - **Multiple locations** — `/coach/locations`, each session type has a location

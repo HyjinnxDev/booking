@@ -1,0 +1,303 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getPrimaryCoach } from '../../lib/coach';
+import { getAvailableSlots } from '../../lib/slots';
+import { getVariant } from '../../lib/sessions';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { sendReschedule, sendCancellation } from '../../lib/email';
+import { notifyWaitlist } from '../../lib/waitlist';
+import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
+import { BOOKING_WINDOW_DAYS, MIN_NOTICE_MIN } from '../../lib/config';
+
+// Manage one booking. The booking id in the URL is the capability token — holding
+// the link (from the confirmation email, or from /bookings) is what authorises
+// reschedule + cancel. No login required; that's the point.
+const { params, url, redirect, request, locals } = Astro;
+const id = params.id ?? '';
+const db = createSupabaseAdmin();
+
+const { data: booking } = await db
+  .from('bookings')
+  .select(
+    `id, coach_id, start_at, end_at, status, notes, ics_sequence, price_cents,
+     class_occurrence_id, session_variant_id,
+     client:client_id ( name, email )`,
+  )
+  .eq('id', id)
+  .maybeSingle();
+
+const done = url.searchParams.get('done'); // 'cancelled' | 'rescheduled' | 'booked'
+const coach = await getPrimaryCoach();
+const backToApp = !!locals.user;
+
+const isAppointment = booking ? !booking.class_occurrence_id && !!booking.session_variant_id : false;
+const variant = isAppointment ? await getVariant(booking!.session_variant_id!) : null;
+
+const cancelled = booking?.status === 'cancelled';
+const past = booking ? new Date(booking.start_at).getTime() <= Date.now() : true;
+const noticeLocked = booking
+  ? new Date(booking.start_at).getTime() <= Date.now() + MIN_NOTICE_MIN * 60_000
+  : true;
+const canCancel = !!booking && !cancelled && !past;
+const canReschedule = !!booking && isAppointment && !!variant && !cancelled && !noticeLocked;
+
+const today = todayStr();
+const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+let date = url.searchParams.get('date') || today;
+if (date < today) date = today;
+if (date > maxDate) date = maxDate;
+
+const client = (booking?.client ?? {}) as { name?: string; email?: string };
+
+let error = '';
+if (booking && request.method === 'POST' && !cancelled) {
+  const form = await request.formData();
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'cancel' && canCancel) {
+    const nextSeq = (booking.ics_sequence ?? 0) + 1;
+    const { data: c } = await db
+      .from('bookings')
+      .update({ status: 'cancelled', ics_sequence: nextSeq })
+      .eq('id', booking.id)
+      .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle();
+    if (c) {
+      if (booking.class_occurrence_id) {
+        try {
+          await notifyWaitlist(booking.class_occurrence_id);
+        } catch (e) {
+          console.error('waitlist notify failed', e);
+        }
+      }
+      if (client.email) {
+        try {
+          await sendCancellation({
+            to: client.email,
+            clientName: client.name ?? '',
+            coachName: coach?.name ?? 'your coach',
+            bookingId: booking.id,
+            startAt: booking.start_at,
+            endAt: booking.end_at,
+            notes: booking.notes,
+            sequence: booking.ics_sequence ?? 0,
+          });
+        } catch (e) {
+          console.error('cancellation email failed', e);
+        }
+      }
+      return redirect(backToApp ? '/bookings?cancelled=1' : `/m/${booking.id}?done=cancelled`);
+    }
+    error = 'That booking could not be cancelled.';
+  }
+
+  if (action === 'reschedule' && canReschedule) {
+    const startAt = String(form.get('start_at') ?? '');
+    const d = String(form.get('date') ?? '');
+    const inWindow = !!d && d >= today && d <= maxDate;
+    const open =
+      inWindow &&
+      (await getAvailableSlots(booking.coach_id, d, variant!.duration_min)).some((s) => s.startAt === startAt);
+
+    if (!open) {
+      error = 'That time is no longer open. Pick another.';
+    } else {
+      const endAt = new Date(new Date(startAt).getTime() + variant!.duration_min * 60_000).toISOString();
+      const nextSeq = (booking.ics_sequence ?? 0) + 1;
+      const { error: e } = await db
+        .from('bookings')
+        .update({ start_at: startAt, end_at: endAt, reminded_at: null, ics_sequence: nextSeq })
+        .eq('id', booking.id)
+        .eq('status', 'confirmed');
+      if (e) {
+        error = e.code === '23505' ? 'That time was just taken. Pick another.' : 'Could not move the booking.';
+      } else {
+        if (client.email) {
+          try {
+            await sendReschedule({
+              to: client.email,
+              clientName: client.name ?? '',
+              coachName: coach?.name ?? 'your coach',
+              bookingId: booking.id,
+              startAt,
+              endAt,
+              notes: booking.notes,
+              sequence: nextSeq,
+            });
+          } catch (err) {
+            console.error('reschedule email failed', err);
+          }
+        }
+        return redirect(backToApp ? '/bookings?rescheduled=1' : `/m/${booking.id}?done=rescheduled`);
+      }
+    }
+  }
+}
+
+const showPicker = canReschedule && url.searchParams.get('reschedule') === '1';
+const slots = showPicker ? await getAvailableSlots(booking!.coach_id, date, variant!.duration_min) : [];
+const rail = Array.from({ length: 7 }, (_, i) => {
+  const dd = addDaysStr(today, i);
+  return { date: dd, dow: calFmt(dd, 'EEE'), day: calFmt(dd, 'd'), isToday: dd === today, isSelected: dd === date };
+});
+
+const title = booking ? 'Manage your booking' : 'Booking not found';
+---
+
+<Base title={title}>
+  {backToApp && <a href="/bookings" class="text-sm text-ink-soft hover:text-ink">← My bookings</a>}
+
+  {
+    !booking ? (
+      <>
+        <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Booking not found</h1>
+        <p class="mt-3 text-ink-soft">
+          This link doesn't match a booking — it may have been cancelled already.
+        </p>
+        <a href="/" class="mt-6 inline-block text-sm font-semibold text-ink underline underline-offset-2">
+          Book a session
+        </a>
+      </>
+    ) : (
+      <>
+        <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">
+          {done === 'booked' ? "You're booked" : done === 'cancelled' ? 'Booking cancelled' : 'Your booking'}
+        </h1>
+
+        {done === 'booked' && (
+          <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
+            Confirmation and a calendar invite are on their way to your email.
+          </p>
+        )}
+        {done === 'rescheduled' && (
+          <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
+            Moved. A calendar update is on its way.
+          </p>
+        )}
+        {done === 'cancelled' && (
+          <p class="mt-3 border-l-2 border-ink bg-white px-4 py-3 text-sm">
+            This booking is cancelled. Book again whenever you like.
+          </p>
+        )}
+        {error && <p class="mt-3 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+
+        <div class="mt-6 border-l-2 border-ball bg-white px-4 py-4">
+          <p class:list={['tnum font-display text-xl font-bold', cancelled && 'line-through opacity-60']}>
+            {fmtLong(booking.start_at)}
+          </p>
+          <p class="mt-1 text-sm text-ink-soft">
+            {variant?.type?.name ?? 'Session'}
+            {variant ? ` · ${variant.name}` : ''} · {coach?.name ?? 'your coach'} · {fmtPrice(booking.price_cents ?? 0)}
+          </p>
+          {variant?.type?.location && (
+            <p class="mt-1 text-sm text-ink-soft">
+              📍 {variant.type.location.name}
+              {variant.type.location.address ? ` · ${variant.type.location.address}` : ''}
+            </p>
+          )}
+        </div>
+
+        {
+          !cancelled && (past ? (
+            <p class="mt-6 text-sm text-ink-soft">This session has passed.</p>
+          ) : (
+            <div class="mt-6 flex flex-wrap gap-3">
+              {isAppointment &&
+                (canReschedule ? (
+                  <a
+                    href={`/m/${booking.id}?reschedule=1`}
+                    class="rounded-lg border border-ink px-4 py-2 text-sm font-semibold hover:bg-ink hover:text-paper"
+                  >
+                    Reschedule
+                  </a>
+                ) : (
+                  <span class="text-sm text-ink-soft">Too close to the session to reschedule online — contact {coach?.name ?? 'your coach'}.</span>
+                ))}
+              {canCancel && (
+                <form method="POST" onsubmit="return confirm('Cancel this booking?')">
+                  <input type="hidden" name="action" value="cancel" />
+                  <button class="rounded-lg border border-line px-4 py-2 text-sm hover:border-ink">Cancel booking</button>
+                </form>
+              )}
+            </div>
+          ))
+        }
+
+        {
+          showPicker && (
+            <div class="mt-10">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <p class="font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">
+                  {calFmt(date, 'EEEE d MMMM')} · {variant!.duration_min} min
+                </p>
+                <form method="GET" class="text-xs text-ink-soft">
+                  <input type="hidden" name="reschedule" value="1" />
+                  <label class="flex items-center gap-1.5 whitespace-nowrap">
+                    Other date
+                    <input
+                      type="date"
+                      name="date"
+                      value={date}
+                      min={today}
+                      max={maxDate}
+                      onchange="this.form.submit()"
+                      class="rounded-md border border-line bg-white px-2 py-1 text-ink"
+                    />
+                  </label>
+                  <noscript>
+                    <button class="ml-1 rounded-md border border-line px-2 py-1">Go</button>
+                  </noscript>
+                </form>
+              </div>
+
+              <div class="mt-3 grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-line bg-line">
+                {rail.map((r) => (
+                  <a
+                    href={`/m/${booking.id}?${new URLSearchParams({ reschedule: '1', date: r.date }).toString()}`}
+                    class:list={[
+                      'flex flex-col items-center gap-1 bg-paper py-3 transition-colors hover:bg-white',
+                      r.isSelected && 'bg-ink! text-paper hover:bg-ink!',
+                    ]}
+                    aria-current={r.isSelected ? 'date' : undefined}
+                  >
+                    <span class="text-[11px] font-semibold uppercase tracking-wide opacity-70">{r.dow}</span>
+                    <span class="tnum font-display text-lg font-bold">{r.day}</span>
+                    <span class:list={['h-1.5 w-1.5 rounded-full', r.isToday ? 'bg-ball' : 'bg-transparent']} />
+                  </a>
+                ))}
+              </div>
+
+              {slots.length === 0 ? (
+                <p class="mt-8 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
+                  No open times on {calFmt(date, 'EEEE')}. Try another day.
+                </p>
+              ) : (
+                <>
+                  <p class="mt-8 font-display text-sm font-semibold uppercase tracking-wider text-ink-soft">
+                    Pick a new time
+                  </p>
+                  <div class="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-3 md:grid-cols-4">
+                    {slots.map((s) => (
+                      <form method="POST">
+                        <input type="hidden" name="action" value="reschedule" />
+                        <input type="hidden" name="date" value={date} />
+                        <input type="hidden" name="start_at" value={s.startAt} />
+                        <button
+                          type="submit"
+                          class="w-full bg-paper px-4 py-5 text-center transition-colors hover:bg-ball focus-visible:bg-ball focus-visible:outline-none"
+                        >
+                          <span class="tnum font-display text-lg font-semibold">{fmtTime(s.startAt)}</span>
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        }
+      </>
+    )
+  }
+</Base>
