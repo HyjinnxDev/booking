@@ -33,8 +33,10 @@ Stripe/online payments deferred by request — still parked in Tier 0.
 
 ## → Round 2 (next working set)
 
-1. [ ] **Vercel env vars + first green deploy** — the one true blocker. Values are in
-   local `.env`; set them Production+Preview, redeploy, confirm `bookings.technicourt.com`.
+1. [x] **Production deploy green** — round 1 merged to `main`, live at
+   `bookings.technicourt.com` (region `syd1`). *Preview* env still lacks the two
+   `PUBLIC_SUPABASE_*` vars, so branch previews fail — set them (tick Preview) only if
+   branch previews are wanted; production is fine.
 2. [ ] **Guest reschedule + magic link** — right now only logged-in clients can reschedule;
    guests (the common case) can't. Token link in the confirmation email → a no-login
    manage page (reschedule + cancel).
@@ -57,12 +59,13 @@ Stripe/online payments deferred by request — still parked in Tier 0.
 
 ## ⚠ Flags / roadblocks from round 1
 
-- **Vercel deploy (item 2/R1, item 1/R2)** — cannot be done from here. There is no
-  Vercel MCP tool or API path in this environment to set project env vars. The deploy
-  will keep failing on missing `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` until
-  someone sets all of `.env`'s vars in the Vercel dashboard (Production **and** Preview),
-  plus `CRON_SECRET`. `vercel.json` now also pins `regions: ["syd1"]` and adds the
-  `topup` cron — both take effect on the next successful deploy.
+- **Vercel deploy** — RESOLVED for production. Round 1 was merged to `main` and deployed
+  green to `bookings.technicourt.com` (`syd1`, `topup` cron registered). The earlier
+  "never succeeded" note was stale — Production env vars were already set; only the
+  *failed* build was a **Preview** deploy of the feature branch, and the **Preview**
+  environment still lacks `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY`. Add those
+  (tick Preview) in the Vercel dashboard if you want branch previews to build. No MCP
+  tool can set them.
 - **Per-location timezone (item 7)** — `locations.timezone` is stored and editable but
   `slots.ts` / `format.ts` still use the single global `PUBLIC_BUSINESS_TZ`. Fine while
   every venue is in Adelaide. Threading a per-location tz through slot generation and
