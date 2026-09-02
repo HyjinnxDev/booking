@@ -20,6 +20,8 @@ export interface SessionType {
   kind: 'appointment' | 'class';
   active: boolean;
   sort: number;
+  location_id: string;
+  location: { id: string; name: string; address: string | null } | null;
   variants: Variant[];
 }
 
@@ -29,9 +31,10 @@ export interface Occurrence {
   end_at: string;
   capacity: number;
   seats_taken: number;
+  waiting: number;
   series_id: string | null;
   variant: Variant;
-  type: Pick<SessionType, 'id' | 'name' | 'blurb'>;
+  type: Pick<SessionType, 'id' | 'name' | 'blurb' | 'location'>;
 }
 
 const VARIANT_COLS = 'id, name, duration_min, price_cents, capacity, active, sort';
@@ -44,7 +47,11 @@ export async function listSessionTypes(
   const db = createSupabaseAdmin();
   let q = db
     .from('session_types')
-    .select(`id, coach_id, name, blurb, kind, active, sort, session_variants ( ${VARIANT_COLS} )`)
+    .select(
+      `id, coach_id, name, blurb, kind, active, sort, location_id,
+       location:location_id ( id, name, address ),
+       session_variants ( ${VARIANT_COLS} )`,
+    )
     .eq('coach_id', coachId)
     .order('sort')
     .order('created_at');
@@ -66,7 +73,9 @@ export async function getVariant(
   const db = createSupabaseAdmin();
   const { data } = await db
     .from('session_variants')
-    .select(`${VARIANT_COLS}, type:session_types ( id, coach_id, name, blurb, kind, active, sort )`)
+    .select(
+      `${VARIANT_COLS}, type:session_types ( id, coach_id, name, blurb, kind, active, sort, location_id, location:location_id ( id, name, address ) )`,
+    )
     .eq('id', id)
     .maybeSingle();
   return data as any;
@@ -83,7 +92,7 @@ export async function upcomingOccurrences(opts: {
     .from('class_occurrences')
     .select(
       `id, start_at, end_at, capacity, series_id,
-       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb ) )`,
+       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, location:location_id ( id, name, address ) ) )`,
     )
     .eq('status', 'scheduled')
     .gte('start_at', (opts.from ?? new Date()).toISOString())
@@ -103,12 +112,20 @@ export async function upcomingOccurrences(opts: {
   const taken = new Map<string, number>();
   for (const s of seats ?? []) taken.set(s.class_occurrence_id, (taken.get(s.class_occurrence_id) ?? 0) + 1);
 
+  const { data: wl } = await db
+    .from('waitlist')
+    .select('class_occurrence_id')
+    .in('class_occurrence_id', rows.map((r) => r.id));
+  const waiting = new Map<string, number>();
+  for (const w of wl ?? []) waiting.set(w.class_occurrence_id, (waiting.get(w.class_occurrence_id) ?? 0) + 1);
+
   return rows.map((r) => ({
     id: r.id,
     start_at: r.start_at,
     end_at: r.end_at,
     capacity: r.capacity,
     seats_taken: taken.get(r.id) ?? 0,
+    waiting: waiting.get(r.id) ?? 0,
     series_id: r.series_id,
     variant: r.variant,
     type: r.variant.type,
@@ -122,7 +139,7 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
     .from('class_occurrences')
     .select(
       `id, start_at, end_at, capacity, series_id, status,
-       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb ) )`,
+       variant:session_variants ( ${VARIANT_COLS}, type:session_types ( id, name, blurb, location:location_id ( id, name, address ) ) )`,
     )
     .eq('id', id)
     .maybeSingle();
@@ -141,6 +158,7 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
     end_at: r.end_at,
     capacity: r.capacity,
     seats_taken: count ?? 0,
+    waiting: 0,
     series_id: r.series_id,
     variant: r.variant,
     type: r.variant.type,

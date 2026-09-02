@@ -48,6 +48,7 @@ const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-i
       <a href="/coach/services" class="text-ink underline underline-offset-2">Sessions</a>
       <a href="/coach/schedule" class="text-ink underline underline-offset-2">Schedule</a>
       <a href="/coach/availability" class="text-ink underline underline-offset-2">Availability</a>
+      <a href="/coach/locations" class="text-ink underline underline-offset-2">Locations</a>
     </nav>
   </div>
 
@@ -101,7 +102,9 @@ const payBtn = 'rounded-md border border-line px-2 py-0.5 text-xs hover:border-i
             <div class="overflow-hidden rounded-xl border border-line bg-white">
               <div class="border-b border-line px-4 py-3">
                 <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
-                <p class="text-sm text-ink-soft">{o.type.name} · {o.seats_taken}/{o.capacity} booked</p>
+                <p class="text-sm text-ink-soft">
+                  {o.type.name} · {o.seats_taken}/{o.capacity} booked{o.waiting > 0 ? ` · ${o.waiting} waiting` : ''}
+                </p>
               </div>
               {roster.length === 0 ? (
                 <p class="px-4 py-3 text-sm text-ink-soft">No bookings yet.</p>

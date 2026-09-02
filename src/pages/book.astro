@@ -32,6 +32,8 @@ interface BookCtx {
   startAt: string;
   endAt: string;
   occId?: string;
+  locationName?: string;
+  locationAddress?: string | null;
 }
 
 let ctx: BookCtx | null = null;
@@ -53,6 +55,8 @@ if (occId) {
     startAt: occ.start_at,
     endAt: occ.end_at,
     occId: occ.id,
+    locationName: occ.type.location?.name,
+    locationAddress: occ.type.location?.address,
   };
 } else if (variantId) {
   const v = await getVariant(variantId);
@@ -72,6 +76,8 @@ if (occId) {
     priceCents: v.price_cents,
     startAt: startAtParam,
     endAt: new Date(new Date(startAtParam).getTime() + v.duration_min * 60_000).toISOString(),
+    locationName: v.type.location?.name,
+    locationAddress: v.type.location?.address,
   };
 } else {
   return redirect('/');
@@ -179,6 +185,11 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
       {ctx.kind === 'appointment' ? ctx.variantName : `${ctx.durationMin} min`} ·
       {coach.name} · {fmtPrice(ctx.priceCents)}
     </p>
+    {ctx.locationName && (
+      <p class="mt-1 text-sm text-ink-soft">
+        📍 {ctx.locationName}{ctx.locationAddress ? ` · ${ctx.locationAddress}` : ''}
+      </p>
+    )}
     {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person — we'll mark it off.</p>}
   </div>
 

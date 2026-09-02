@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getPrimaryCoach } from '../../lib/coach';
 import { sendCancellation } from '../../lib/email';
+import { notifyWaitlist } from '../../lib/waitlist';
 
 // Booking creation lives in /book (guest + member flow). This endpoint only
 // handles a member cancelling their own booking.
@@ -18,10 +19,17 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     .eq('id', id)
     .eq('client_id', user.id)
     .eq('status', 'confirmed')
-    .select('id, start_at, end_at, notes, ics_sequence')
+    .select('id, start_at, end_at, notes, ics_sequence, class_occurrence_id')
     .maybeSingle();
 
   if (!error && data) {
+    if (data.class_occurrence_id) {
+      try {
+        await notifyWaitlist(data.class_occurrence_id);
+      } catch (e) {
+        console.error('waitlist notify failed', e);
+      }
+    }
     const coach = await getPrimaryCoach();
     try {
       await sendCancellation({

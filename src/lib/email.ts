@@ -115,6 +115,26 @@ export async function sendCancellation(m: BookingMail) {
   });
 }
 
+export async function sendWaitlistOpening(m: {
+  to: string;
+  clientName: string;
+  className: string;
+  startAt: string;
+  occId: string;
+}) {
+  return send({
+    from: FROM,
+    to: m.to,
+    subject: `A seat opened — ${m.className}, ${fmtLong(m.startAt)}`,
+    html: shell(
+      `<p>Hi ${m.clientName || 'there'},</p>
+       <p>A seat just opened in <strong>${m.className}</strong> on <strong>${fmtLong(m.startAt)}</strong>.</p>
+       <p>It's first come, first served —
+         <a href="${SITE_URL}/book?occ=${m.occId}">book your seat</a> before someone else does.</p>`,
+    ),
+  });
+}
+
 export async function sendReminder(m: BookingMail) {
   const ics = bookingIcs(event(m), { method: 'REQUEST' });
   return send({

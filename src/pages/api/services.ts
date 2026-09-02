@@ -20,7 +20,13 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       if (!name || (kind !== 'appointment' && kind !== 'class')) return fail('Name and kind are required.');
       const { data, error } = await supabase
         .from('session_types')
-        .insert({ coach_id: user.id, name, blurb: s('blurb').slice(0, 300) || null, kind })
+        .insert({
+          coach_id: user.id,
+          name,
+          blurb: s('blurb').slice(0, 300) || null,
+          kind,
+          location_id: s('location_id') || undefined,
+        })
         .select('id')
         .single();
       if (error) return fail(error.message);
@@ -44,6 +50,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
           name: s('name').slice(0, 80) || 'Untitled',
           blurb: s('blurb').slice(0, 300) || null,
           active: form.get('active') === 'on',
+          location_id: s('location_id') || undefined,
         })
         .eq('id', s('id'));
       if (error) return fail(error.message);

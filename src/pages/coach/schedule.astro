@@ -83,6 +83,7 @@ const btn = 'rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hove
               <p class="tnum font-display font-bold">{fmtLong(o.start_at)}</p>
               <p class="text-ink-soft">
                 {o.type.name} · {o.seats_taken}/{o.capacity} booked
+                {o.waiting > 0 && ` · ${o.waiting} waiting`}
                 {o.series_id && ' · part of a weekly series'}
               </p>
             </div>

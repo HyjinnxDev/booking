@@ -1,10 +1,12 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { listSessionTypes } from '../../lib/sessions';
+import { listLocations } from '../../lib/locations';
 
 const { locals, url } = Astro;
 const coachId = locals.user!.id;
-const types = await listSessionTypes(coachId);
+const [types, locations] = await Promise.all([listSessionTypes(coachId), listLocations({ activeOnly: true })]);
+const multiLoc = locations.length > 1;
 const err = url.searchParams.get('error');
 
 const inputCls = 'rounded-lg border border-line bg-white px-2 py-1.5 text-sm focus:border-ink focus:outline-none';
@@ -35,6 +37,15 @@ const ghost = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-in
               </span>
               <input name="name" value={t.name} class={`${inputCls} font-semibold`} />
               <input name="blurb" value={t.blurb ?? ''} placeholder="Short description" class={`${inputCls} grow`} />
+              {multiLoc && (
+                <select name="location_id" class={inputCls}>
+                  {locations.map((l) => (
+                    <option value={l.id} selected={l.id === t.location_id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <label class="flex items-center gap-1.5 text-sm text-ink-soft">
                 <input type="checkbox" name="active" checked={t.active} /> active
               </label>
@@ -128,6 +139,18 @@ const ghost = 'rounded-lg border border-line px-3 py-1.5 text-sm hover:border-in
       <span class="block text-ink-soft">Description — optional</span>
       <input name="blurb" class={`${inputCls} mt-1 w-full`} />
     </label>
+    {
+      multiLoc && (
+        <label class="text-sm">
+          <span class="block text-ink-soft">Location</span>
+          <select name="location_id" class={`${inputCls} mt-1`}>
+            {locations.map((l) => (
+              <option value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </label>
+      )
+    }
     <button class={btn}>Create</button>
   </form>
   <p class="mt-2 text-xs text-ink-soft">A class starts with one editable option (60 min, 8 seats, free).</p>
