@@ -1,0 +1,108 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { listCoaches, staffLocationMap } from '../../lib/staff';
+import { listLocations } from '../../lib/locations';
+
+const { url } = Astro;
+const [coaches, locMap, locations] = await Promise.all([listCoaches(), staffLocationMap(), listLocations()]);
+
+const err = url.searchParams.get('error');
+const created = url.searchParams.get('created');
+const manageTabs = [
+  { href: '/coach', label: 'Agenda' },
+  { href: '/coach/services', label: 'Sessions' },
+  { href: '/coach/schedule', label: 'Classes' },
+  { href: '/coach/availability', label: 'Hours' },
+];
+---
+
+<Admin title="Staff" desc="Add coaches, set which locations they work at, and jump into any coach's setup.">
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {created && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Coach added — a sign-in email is on its way.</p>}
+
+  <details class="card" open={!!err || coaches.length === 0}>
+    <summary class="eyebrow cursor-pointer px-4 py-3">Add a coach</summary>
+    <form method="POST" action="/api/staff" class="flex flex-wrap items-end gap-2.5 border-t border-line bg-paper p-4">
+      <input type="hidden" name="action" value="staff.create" />
+      <label class="text-sm">
+        <span class="mb-1 block text-ink-soft">Name</span>
+        <input name="name" required class="field w-48" />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-ink-soft">Email</span>
+        <input name="email" type="email" required class="field w-56" />
+      </label>
+      {locations.length > 1 && (
+        <fieldset class="text-sm">
+          <span class="mb-1 block text-ink-soft">Locations</span>
+          <div class="flex flex-wrap gap-3">
+            {locations.map((l) => (
+              <label class="flex items-center gap-1.5">
+                <input type="checkbox" name="location_id" value={l.id} /> {l.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      <button class="btn">Add coach</button>
+    </form>
+  </details>
+
+  <div class="mt-6 space-y-2">
+    {
+      coaches.map((c) => {
+        const mine = locMap.get(c.id) ?? [];
+        return (
+          <details class="card group">
+            <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm hover:bg-paper">
+              <span class="font-semibold">{c.name || c.email}</span>
+              <span class="text-ink-soft">· {c.email}</span>
+              {!c.active && <span class="rounded bg-ink/5 px-1.5 py-0.5 text-[11px] font-semibold uppercase text-ink-soft">inactive</span>}
+              {locations.length > 1 && mine.length > 0 && (
+                <span class="text-ink-soft">· {mine.map((id) => locations.find((l) => l.id === id)?.name).filter(Boolean).join(', ')}</span>
+              )}
+              <span class="ml-auto text-ink-soft transition group-open:rotate-90">›</span>
+            </summary>
+
+            <div class="space-y-4 border-t border-line bg-paper p-4 text-sm">
+              <div class="flex flex-wrap gap-2">
+                {manageTabs.map((t) => (
+                  <a href={`${t.href}?coach=${c.id}`} class="btn btn-ghost btn-sm">{t.label} →</a>
+                ))}
+              </div>
+
+              {locations.length > 1 && (
+                <form method="POST" action="/api/staff" class="flex flex-wrap items-end gap-3">
+                  <input type="hidden" name="action" value="staff.locations" />
+                  <input type="hidden" name="staff_id" value={c.id} />
+                  <fieldset>
+                    <span class="mb-1 block text-ink-soft">Works at</span>
+                    <div class="flex flex-wrap gap-3">
+                      {locations.map((l) => (
+                        <label class="flex items-center gap-1.5">
+                          <input type="checkbox" name="location_id" value={l.id} checked={mine.includes(l.id)} /> {l.name}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button class="btn btn-ghost btn-sm">Save locations</button>
+                </form>
+              )}
+
+              <form method="POST" action="/api/staff">
+                <input type="hidden" name="action" value="staff.active" />
+                <input type="hidden" name="staff_id" value={c.id} />
+                <input type="hidden" name="to" value={(!c.active).toString()} />
+                <button class="btn btn-quiet btn-sm btn-danger">
+                  {c.active ? 'Deactivate coach' : 'Reactivate coach'}
+                </button>
+                {c.active && <span class="ml-2 text-xs text-ink-soft">Hides them from booking; keeps their history.</span>}
+              </form>
+            </div>
+          </details>
+        );
+      })
+    }
+    {coaches.length === 0 && <p class="text-sm text-ink-soft">No coaches yet. Add one above.</p>}
+  </div>
+</Admin>

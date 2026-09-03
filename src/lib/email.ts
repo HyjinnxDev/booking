@@ -123,6 +123,26 @@ export async function sendCancellation(m: BookingMail) {
   });
 }
 
+export async function sendStaffWelcome(m: { to: string; name: string; tempPassword: string }) {
+  return send({
+    from: FROM,
+    to: m.to,
+    subject: `Your ${BRAND} coach account`,
+    html: shell(
+      `<p>Hi ${m.name || 'there'},</p>
+       <p>An account has been set up for you to manage your ${BRAND} schedule.</p>
+       <p style="background:#f4f4f2;border-radius:8px;padding:12px 14px">
+         Sign in at <a href="${SITE_URL}/login">${SITE_URL.replace(/^https?:\/\//, '')}/login</a>
+         with this email and the temporary password
+         <strong style="font-family:ui-monospace,monospace">${m.tempPassword}</strong>.
+         Change it once you're in.
+       </p>
+       <p>From there you can set your hours, add session types and prices, schedule
+          classes, and see your bookings.</p>`,
+    ),
+  });
+}
+
 export async function sendWaitlistOpening(m: {
   to: string;
   clientName: string;

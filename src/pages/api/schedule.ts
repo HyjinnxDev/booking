@@ -8,19 +8,24 @@ import { addDaysStr, todayStr } from '../../lib/format';
 import { sendCancellation } from '../../lib/email';
 
 const STAFF = new Set(['coach', 'admin']);
-const BACK = '/coach/schedule';
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export const POST: APIRoute = async ({ request, locals, redirect }) => {
+export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
   const { user, profile } = locals;
-  if (!user || !STAFF.has(profile?.role ?? '')) return new Response('Forbidden', { status: 403 });
+  if (!user || !profile || !STAFF.has(profile.role)) return new Response('Forbidden', { status: 403 });
 
   const db = createSupabaseAdmin();
   const form = await request.formData();
   const action = String(form.get('action') ?? '');
   const s = (k: string) => String(form.get(k) ?? '').trim();
-  const fail = (msg: string) => redirect(`${BACK}?error=${encodeURIComponent(msg)}`);
+
+  // An admin may act on another coach via ?coach= / coach field; a coach only on self.
+  const isAdmin = profile.role === 'admin';
+  const coachParam = url.searchParams.get('coach') || s('coach');
+  const targetCoach = isAdmin && coachParam ? coachParam : user.id;
+  const BACK = targetCoach === user.id ? '/coach/schedule' : `/coach/schedule?coach=${targetCoach}`;
+  const fail = (msg: string) => redirect(`${BACK}${BACK.includes('?') ? '&' : '?'}error=${encodeURIComponent(msg)}`);
 
   // Cancel a class + release its seats, then email every attendee. Email is
   // best-effort: a Resend failure is logged, never blocks the cancellation.
@@ -71,7 +76,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         .from('session_types')
         .select('id, kind, session_variants ( id, duration_min, active )')
         .eq('id', s('session_type_id'))
-        .eq('coach_id', user.id)
+        .eq('coach_id', targetCoach)
         .maybeSingle();
       if (!type || type.kind !== 'class') return fail('Unknown class type.');
       const variant = (type.session_variants as any[]).find((v) => v.active) ?? type.session_variants[0];
@@ -96,7 +101,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       const { error } = await db.from('class_occurrences').insert(
         rows.map((r) => ({
           session_variant_id: variant.id,
-          coach_id: user.id,
+          coach_id: targetCoach,
           start_at: r.start_at,
           end_at: r.end_at,
           capacity,
@@ -113,7 +118,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         .from('class_occurrences')
         .update({ status: 'cancelled' })
         .eq('id', id)
-        .eq('coach_id', user.id)
+        .eq('coach_id', targetCoach)
         .eq('status', 'scheduled')
         .select('id')
         .maybeSingle();
@@ -127,7 +132,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         .from('class_occurrences')
         .update({ status: 'cancelled' })
         .eq('series_id', seriesId)
-        .eq('coach_id', user.id)
+        .eq('coach_id', targetCoach)
         .eq('status', 'scheduled')
         .gte('start_at', new Date().toISOString())
         .select('id');
@@ -137,22 +142,16 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
     case 'booking.pay': {
       const to = s('to') === 'paid' ? 'paid' : 'unpaid';
-      await db
-        .from('bookings')
-        .update({ payment_status: to })
-        .eq('id', s('id'))
-        .eq('coach_id', user.id)
-        .neq('payment_status', 'free');
+      let q = db.from('bookings').update({ payment_status: to }).eq('id', s('id')).neq('payment_status', 'free');
+      if (!isAdmin) q = q.eq('coach_id', user.id);
+      await q;
       return redirect(s('back') || '/coach');
     }
 
     case 'booking.noshow': {
-      await db
-        .from('bookings')
-        .update({ status: 'no_show' })
-        .eq('id', s('id'))
-        .eq('coach_id', user.id)
-        .eq('status', 'confirmed');
+      let q = db.from('bookings').update({ status: 'no_show' }).eq('id', s('id')).eq('status', 'confirmed');
+      if (!isAdmin) q = q.eq('coach_id', user.id);
+      await q;
       return redirect(s('back') || '/coach');
     }
 

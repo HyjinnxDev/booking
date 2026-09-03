@@ -53,6 +53,16 @@ const path = Astro.url.pathname;
           )
         }
         {
+          profile?.role === 'admin' && (
+            <a
+              href="/admin"
+              class:list={['text-sm hover:text-ink', path.startsWith('/admin') ? 'text-ink' : 'text-ink-soft']}
+            >
+              Admin
+            </a>
+          )
+        }
+        {
           isStaff && (
             <a
               href="/coach"

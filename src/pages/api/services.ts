@@ -3,16 +3,20 @@ import { parsePrice } from '../../lib/format';
 import { parseIntakeFields } from '../../lib/intake';
 
 const STAFF = new Set(['coach', 'admin']);
-const BACK = '/coach/services';
 
-export const POST: APIRoute = async ({ request, locals, redirect }) => {
+export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
   const { user, profile, supabase } = locals;
-  if (!user || !STAFF.has(profile?.role ?? '')) return new Response('Forbidden', { status: 403 });
+  if (!user || !profile || !STAFF.has(profile.role)) return new Response('Forbidden', { status: 403 });
 
   const form = await request.formData();
   const action = String(form.get('action') ?? '');
   const s = (k: string) => String(form.get(k) ?? '').trim();
-  const fail = (msg: string) => redirect(`${BACK}?error=${encodeURIComponent(msg)}`);
+
+  // An admin may act on another coach via ?coach=; RLS (is_admin) allows the write.
+  const coachParam = url.searchParams.get('coach') || s('coach');
+  const targetCoach = profile.role === 'admin' && coachParam ? coachParam : user.id;
+  const BACK = targetCoach === user.id ? '/coach/services' : `/coach/services?coach=${targetCoach}`;
+  const fail = (msg: string) => redirect(`${BACK}${BACK.includes('?') ? '&' : '?'}error=${encodeURIComponent(msg)}`);
 
   switch (action) {
     case 'type.create': {
@@ -22,7 +26,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       const { data, error } = await supabase
         .from('session_types')
         .insert({
-          coach_id: user.id,
+          coach_id: targetCoach,
           name,
           blurb: s('blurb').slice(0, 300) || null,
           kind,

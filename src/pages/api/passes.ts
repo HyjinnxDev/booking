@@ -2,13 +2,12 @@ import type { APIRoute } from 'astro';
 import { parsePrice } from '../../lib/format';
 import { findOrCreateClient } from '../../lib/accounts';
 
-const STAFF = new Set(['coach', 'admin']);
-const BACK = '/coach/passes';
+const BACK = '/admin/passes';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
-  const { user, profile, supabase } = locals;
-  if (!user || !STAFF.has(profile?.role ?? '')) return new Response('Forbidden', { status: 403 });
+  const { profile, supabase } = locals;
+  if (profile?.role !== 'admin') return new Response('Forbidden', { status: 403 });
 
   const form = await request.formData();
   const action = String(form.get('action') ?? '');

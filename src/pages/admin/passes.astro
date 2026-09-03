@@ -1,30 +1,33 @@
 ---
-import Coach from '../../layouts/Coach.astro';
+import Admin from '../../layouts/Admin.astro';
 import { createSupabaseAdmin } from '../../lib/supabase';
-import { listSessionTypes } from '../../lib/sessions';
 import { fmtPrice } from '../../lib/format';
 
-const { locals, url } = Astro;
-const coachId = locals.user!.id;
+const { url } = Astro;
 const db = createSupabaseAdmin();
 
-const [types, { data: passRows }] = await Promise.all([
-  listSessionTypes(coachId),
+const [{ data: typeRows }, { data: passRows }] = await Promise.all([
+  db.from('session_types').select('id, name, coach:coach_id ( name )').order('name'),
   db
     .from('passes')
     .select('id, name, total, used, price_cents, status, expires_at, session_type_id, client:client_id ( name, email )')
     .order('created_at', { ascending: false }),
 ]);
+const types = (typeRows ?? []).map((t: any) => ({ id: t.id, name: t.name, coachName: t.coach?.name ?? '' }));
 const passes = (passRows ?? []) as any[];
 const active = passes.filter((p) => p.status === 'active');
 const voided = passes.filter((p) => p.status === 'void');
-const typeName = (id: string | null) => (id ? types.find((t) => t.id === id)?.name ?? 'Unknown' : 'Any session');
+const typeName = (id: string | null) => {
+  if (!id) return 'Any session';
+  const t = types.find((x) => x.id === id);
+  return t ? `${t.name}${t.coachName ? ` (${t.coachName})` : ''}` : 'Unknown';
+};
 
 const err = url.searchParams.get('error');
 const issued = url.searchParams.get('issued');
 ---
 
-<Coach
+<Admin
   title="Passes"
   desc="Sell a bundle of sessions in person, then issue it here. The client picks it at checkout and the balance ticks down. Cancelling a covered booking returns the credit."
 >
@@ -51,7 +54,7 @@ const issued = url.searchParams.get('issued');
         <span class="mb-1 block text-ink-soft">Covers</span>
         <select name="session_type_id" class="field">
           <option value="">Any session</option>
-          {types.map((t) => <option value={t.id}>{t.name}</option>)}
+          {types.map((t) => <option value={t.id}>{t.name}{t.coachName ? ` — ${t.coachName}` : ''}</option>)}
         </select>
       </label>
       <label class="text-sm">
@@ -117,4 +120,4 @@ const issued = url.searchParams.get('issued');
       </>
     )
   }
-</Coach>
+</Admin>

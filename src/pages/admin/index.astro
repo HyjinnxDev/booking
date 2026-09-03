@@ -1,0 +1,75 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { listCoaches } from '../../lib/staff';
+import { fmtTime, localDay, todayStr, addDaysStr, calFmt } from '../../lib/format';
+
+const db = createSupabaseAdmin();
+const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString();
+const nowIso = new Date().toISOString();
+
+const [coaches, { data: upcoming }, { count: unpaid }] = await Promise.all([
+  listCoaches(),
+  db
+    .from('bookings')
+    .select('id, start_at, coach_id, status, client:client_id ( name ), variant:session_variant_id ( name, session_types ( name ) )')
+    .neq('status', 'cancelled')
+    .gte('start_at', nowIso)
+    .lt('start_at', weekEnd)
+    .order('start_at'),
+  db.from('bookings').select('id', { count: 'exact', head: true }).eq('payment_status', 'unpaid').gte('start_at', nowIso),
+]);
+
+const activeCoaches = coaches.filter((c) => c.active);
+const nameOf = (id: string) => coaches.find((c) => c.id === id)?.name ?? 'Coach';
+const rows = (upcoming ?? []) as any[];
+const days = Array.from({ length: 7 }, (_, i) => addDaysStr(todayStr(), i));
+const byDay = new Map(days.map((d) => [d, rows.filter((r) => localDay(r.start_at) === d)]));
+---
+
+<Admin title="Overview">
+  <div class="grid gap-3 sm:grid-cols-3">
+    <div class="card p-4">
+      <p class="eyebrow">Active coaches</p>
+      <p class="mt-1 font-display text-2xl font-bold">{activeCoaches.length}<span class="text-base font-normal text-ink-soft">/{coaches.length}</span></p>
+    </div>
+    <div class="card p-4">
+      <p class="eyebrow">Bookings · next 7 days</p>
+      <p class="mt-1 font-display text-2xl font-bold">{rows.length}</p>
+    </div>
+    <div class="card p-4">
+      <p class="eyebrow">Unpaid · upcoming</p>
+      <p class="mt-1 font-display text-2xl font-bold">{unpaid ?? 0}</p>
+    </div>
+  </div>
+
+  <p class="eyebrow mt-8">This week — all coaches</p>
+  <div class="mt-2 max-w-3xl space-y-4">
+    {
+      days.map((d) => {
+        const list = byDay.get(d) ?? [];
+        return (
+          <section>
+            <p class="mb-1.5 text-sm font-semibold text-ink-soft">{calFmt(d, 'EEEE d MMM')}</p>
+            {list.length === 0 ? (
+              <p class="text-sm text-ink-soft">—</p>
+            ) : (
+              <div class="card rowlist">
+                {list.map((r) => (
+                  <a href={`/m/${r.id}`} class="flex items-center gap-2.5 px-4 py-2 text-sm hover:bg-paper">
+                    <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.start_at)}</span>
+                    <span class="min-w-0 flex-1 truncate">
+                      {r.client?.name || 'Client'}
+                      <span class="text-ink-soft"> · {r.variant?.session_types?.name ?? 'Session'}</span>
+                    </span>
+                    <span class="shrink-0 text-ink-soft">{nameOf(r.coach_id)}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })
+    }
+  </div>
+</Admin>

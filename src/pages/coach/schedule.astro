@@ -3,9 +3,13 @@ import Coach from '../../layouts/Coach.astro';
 import { listSessionTypes, upcomingOccurrences } from '../../lib/sessions';
 import { fmtLong, todayStr, addDaysStr } from '../../lib/format';
 import { SERIES_WEEKS } from '../../lib/config';
+import { getStaffScope } from '../../lib/staff';
 
-const { locals, url } = Astro;
-const coachId = locals.user!.id;
+const { url } = Astro;
+const scope = await getStaffScope(Astro);
+if (scope.needsPick) return Astro.redirect('/admin/staff');
+const coachId = scope.coachId!;
+const api = scope.isSelf ? '/api/schedule' : `/api/schedule?coach=${coachId}`;
 
 const [types, occ] = await Promise.all([listSessionTypes(coachId), upcomingOccurrences({ coachId })]);
 const classTypes = types.filter((t) => t.kind === 'class');
@@ -16,7 +20,11 @@ const today = todayStr();
 const defaultUntil = addDaysStr(today, SERIES_WEEKS * 7);
 ---
 
-<Coach title="Classes" desc="Put dates on the calendar for your group sessions. Manage class types and prices on the Sessions tab.">
+<Coach
+  title="Classes"
+  desc="Put dates on the calendar for your group sessions. Manage class types and prices on the Sessions tab."
+  editingCoach={scope.isSelf ? undefined : scope.coachName}
+>
   {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
   {added && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Added {added} session{added === '1' ? '' : 's'}.</p>}
 
@@ -27,7 +35,7 @@ const defaultUntil = addDaysStr(today, SERIES_WEEKS * 7);
         <a href="/coach/services" class="font-semibold text-ink underline underline-offset-2">Sessions</a> tab first.
       </p>
     ) : (
-      <form method="POST" action="/api/schedule" class="card flex flex-wrap items-end gap-2.5 p-4">
+      <form method="POST" action={api} class="card flex flex-wrap items-end gap-2.5 p-4">
         <input type="hidden" name="action" value="occ.create" />
         <label class="text-sm">
           <span class="mb-1 block text-ink-soft">Class</span>
@@ -76,13 +84,13 @@ const defaultUntil = addDaysStr(today, SERIES_WEEKS * 7);
               </p>
             </div>
             <div class="flex items-center gap-1.5">
-              <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
+              <form method="POST" action={api} onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
                 <input type="hidden" name="action" value="occ.cancel" />
                 <input type="hidden" name="id" value={o.id} />
                 <button class="btn btn-ghost btn-sm btn-danger">Cancel</button>
               </form>
               {o.series_id && (
-                <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel every future session in this series?')">
+                <form method="POST" action={api} onsubmit="return confirm('Cancel every future session in this series?')">
                   <input type="hidden" name="action" value="series.cancel" />
                   <input type="hidden" name="series_id" value={o.series_id} />
                   <button class="btn btn-quiet btn-sm">Cancel series</button>

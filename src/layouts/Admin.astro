@@ -4,21 +4,17 @@ import Base from './Base.astro';
 interface Props {
   title: string;
   desc?: string;
-  /** Set when an admin is managing another coach's setup. */
-  editingCoach?: string;
 }
-const { title, desc, editingCoach } = Astro.props;
+const { title, desc } = Astro.props;
 const path = Astro.url.pathname;
 
-const coachParam = Astro.url.searchParams.get('coach');
-const q = coachParam ? `?coach=${coachParam}` : '';
 const tabs = [
-  { href: '/coach', label: 'Agenda' },
-  { href: '/coach/services', label: 'Sessions' },
-  { href: '/coach/schedule', label: 'Classes' },
-  { href: '/coach/availability', label: 'Hours' },
+  { href: '/admin', label: 'Overview' },
+  { href: '/admin/staff', label: 'Staff' },
+  { href: '/admin/locations', label: 'Locations' },
+  { href: '/admin/passes', label: 'Passes' },
 ];
-const active = (href: string) => (href === '/coach' ? path === '/coach' : path.startsWith(href));
+const active = (href: string) => (href === '/admin' ? path === '/admin' : path.startsWith(href));
 ---
 
 <Base title={title} wide>
@@ -26,7 +22,7 @@ const active = (href: string) => (href === '/coach' ? path === '/coach' : path.s
     {
       tabs.map((t) => (
         <a
-          href={`${t.href}${q}`}
+          href={t.href}
           aria-current={active(t.href) ? 'page' : undefined}
           class:list={[
             'rounded-t-md px-3 py-2 font-semibold',
@@ -40,15 +36,6 @@ const active = (href: string) => (href === '/coach' ? path === '/coach' : path.s
       ))
     }
   </nav>
-
-  {
-    editingCoach && (
-      <p class="mt-4 flex flex-wrap items-center gap-2 border-l-2 border-ball bg-white px-4 py-2 text-sm">
-        <span>Managing <strong>{editingCoach}</strong>'s setup.</span>
-        <a href="/admin/staff" class="text-ink-soft underline underline-offset-2 hover:text-ink">Back to Staff</a>
-      </p>
-    )
-  }
 
   <header class="mt-6 flex flex-wrap items-start justify-between gap-3">
     <div>

@@ -1,5 +1,5 @@
 ---
-import Coach from '../../layouts/Coach.astro';
+import Admin from '../../layouts/Admin.astro';
 import { listLocations } from '../../lib/locations';
 
 const { url } = Astro;
@@ -7,9 +7,9 @@ const locations = await listLocations();
 const err = url.searchParams.get('error');
 ---
 
-<Coach
+<Admin
   title="Locations"
-  desc="Venues where sessions run. Assign a session to a location on the Sessions tab. Slot times use the business timezone — per-location timezones aren't live yet."
+  desc="Venues where sessions run. Assign coaches to locations on the Staff tab; a coach assigns each session to one of their locations. Slot times use the business timezone — per-location timezones aren't live yet."
 >
   {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
 
@@ -60,4 +60,4 @@ const err = url.searchParams.get('error');
       <button class="btn">Create</button>
     </form>
   </details>
-</Coach>
+</Admin>

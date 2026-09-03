@@ -1,11 +1,10 @@
 import type { APIRoute } from 'astro';
 
-const STAFF = new Set(['coach', 'admin']);
-const BACK = '/coach/locations';
+const BACK = '/admin/locations';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
-  const { user, profile, supabase } = locals;
-  if (!user || !STAFF.has(profile?.role ?? '')) return new Response('Forbidden', { status: 403 });
+  const { profile, supabase } = locals;
+  if (profile?.role !== 'admin') return new Response('Forbidden', { status: 403 });
 
   const form = await request.formData();
   const action = String(form.get('action') ?? '');

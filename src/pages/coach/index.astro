@@ -6,9 +6,13 @@ import { fmtTime, fmtPrice, todayStr, addDaysStr, calFmt, localDay } from '../..
 import { getAvailableSlots } from '../../lib/slots';
 import { SITE_URL, BUSINESS_TZ } from '../../lib/config';
 import { fromZonedTime } from 'date-fns-tz';
+import { getStaffScope } from '../../lib/staff';
 
-const { locals, url } = Astro;
-const coachId = locals.user!.id;
+const { url } = Astro;
+const scope = await getStaffScope(Astro);
+if (scope.needsPick) return Astro.redirect('/admin/staff');
+const coachId = scope.coachId!;
+const api = scope.isSelf ? '/api/schedule' : `/api/schedule?coach=${coachId}`;
 const db = createSupabaseAdmin();
 
 const span = url.searchParams.get('span') === 'week' ? 'week' : 'day';
@@ -105,7 +109,9 @@ const walkSlots = walkOpen && walkVariant ? await getAvailableSlots(coachId, wd,
 
 const prevD = addDaysStr(from, -dayCount);
 const nextD = addDaysStr(from, dayCount);
-const nav = (o: Record<string, string>) => `/coach?${new URLSearchParams({ span, d, ...o }).toString()}`;
+const base: Record<string, string> = scope.isSelf ? {} : { coach: coachId };
+const nav = (o: Record<string, string>) => `/coach?${new URLSearchParams({ span, d, ...base, ...o }).toString()}`;
+const backHere = nav({});
 
 const rangeLabel =
   span === 'week' ? `${calFmt(from, 'd MMM')} – ${calFmt(addDaysStr(from, 6), 'd MMM')}` : calFmt(d, 'EEEE d MMMM');
@@ -113,15 +119,12 @@ const rangeLabel =
 const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
 ---
 
-<Coach title="Agenda">
+<Coach title="Agenda" editingCoach={scope.isSelf ? undefined : scope.coachName}>
   <div slot="actions" class="flex items-center gap-1.5 text-sm">
     <a href={nav({ d: prevD })} class="btn btn-ghost btn-sm" aria-label="Previous">←</a>
     <a href={nav({ d: todayStr() })} class="btn btn-ghost btn-sm">Today</a>
     <a href={nav({ d: nextD })} class="btn btn-ghost btn-sm" aria-label="Next">→</a>
-    <a
-      href={`/coach?${new URLSearchParams({ span: span === 'day' ? 'week' : 'day', d }).toString()}`}
-      class="btn btn-ghost btn-sm"
-    >
+    <a href={nav({ span: span === 'day' ? 'week' : 'day' })} class="btn btn-ghost btn-sm">
       {span === 'day' ? 'Week' : 'Day'}
     </a>
   </div>
@@ -181,7 +184,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                           ))}
                         <div class="flex flex-wrap gap-2 pt-1">
                           {r.b.payment_status !== 'free' && (
-                            <form method="POST" action="/api/schedule">
+                            <form method="POST" action={api}>
                               <input type="hidden" name="action" value="booking.pay" />
                               <input type="hidden" name="id" value={r.b.id} />
                               <input type="hidden" name="to" value={r.b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
@@ -192,7 +195,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                           )}
                           <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / cancel</a>
                           {r.b.status === 'confirmed' && (
-                            <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark as a no-show?')">
+                            <form method="POST" action={api} onsubmit="return confirm('Mark as a no-show?')">
                               <input type="hidden" name="action" value="booking.noshow" />
                               <input type="hidden" name="id" value={r.b.id} />
                               <button class="btn btn-ghost btn-sm btn-danger">No-show</button>
@@ -227,7 +230,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                                   {b.client?.phone ? ` · ${b.client.phone}` : ''}
                                 </span>
                                 {b.payment_status !== 'free' && (
-                                  <form method="POST" action="/api/schedule">
+                                  <form method="POST" action={api}>
                                     <input type="hidden" name="action" value="booking.pay" />
                                     <input type="hidden" name="id" value={b.id} />
                                     <input type="hidden" name="to" value={b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
@@ -249,7 +252,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                           </ul>
                         )}
                         <div class="mt-2 flex gap-2">
-                          <form method="POST" action="/api/schedule" onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
+                          <form method="POST" action={api} onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">
                             <input type="hidden" name="action" value="occ.cancel" />
                             <input type="hidden" name="id" value={r.o.id} />
                             <button class="btn btn-ghost btn-sm btn-danger">Cancel class</button>
@@ -274,6 +277,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
       <input type="hidden" name="span" value={span} />
       <input type="hidden" name="d" value={d} />
       <input type="hidden" name="walk" value="1" />
+      {!scope.isSelf && <input type="hidden" name="coach" value={coachId} />}
       <label class="text-sm">
         <span class="mb-1 block text-ink-soft">Session</span>
         <select name="wt" class="field w-44">
@@ -293,7 +297,8 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
         <form method="POST" action="/api/walkin" class="card mt-3 p-4">
           <input type="hidden" name="variant_id" value={walkVariant.id} />
           <input type="hidden" name="date" value={wd} />
-          <input type="hidden" name="back" value="/coach" />
+          <input type="hidden" name="coach_id" value={coachId} />
+          <input type="hidden" name="back" value={backHere} />
           <div class="flex flex-wrap gap-2">
             <input name="name" required placeholder="Client name" class="field w-44" />
             <input name="email" type="email" required placeholder="Client email" class="field w-52" />

@@ -21,6 +21,7 @@ export async function getPrimaryCoach(): Promise<Coach | null> {
     .from('profiles')
     .select('id, name, email, cal_token')
     .eq('role', 'coach')
+    .eq('active', true)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();

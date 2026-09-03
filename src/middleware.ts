@@ -23,12 +23,16 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   }
 
   const path = ctx.url.pathname;
+  const role = ctx.locals.profile?.role ?? '';
 
   if (path.startsWith('/coach')) {
     if (!user) return ctx.redirect(`/login?next=${encodeURIComponent(path)}`);
-    if (!STAFF.has(ctx.locals.profile?.role ?? '')) {
-      return new Response('Forbidden', { status: 403 });
-    }
+    if (!STAFF.has(role)) return new Response('Forbidden', { status: 403 });
+  }
+
+  if (path.startsWith('/admin')) {
+    if (!user) return ctx.redirect(`/login?next=${encodeURIComponent(path)}`);
+    if (role !== 'admin') return new Response('Forbidden', { status: 403 });
   }
 
   if (path === '/bookings' && !user) {
