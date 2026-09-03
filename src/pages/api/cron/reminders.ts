@@ -6,7 +6,7 @@ import { sendReminder } from '../../../lib/email';
 // Daily Vercel Cron -> emails reminders for confirmed bookings in the next 24h.
 // Idempotent: `reminded_at` guards against duplicate sends across retries.
 export const GET: APIRoute = async ({ request }) => {
-  if (CRON_SECRET && request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
+  if (request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 

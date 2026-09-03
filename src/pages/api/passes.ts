@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { parsePrice } from '../../lib/format';
 import { findOrCreateClient } from '../../lib/accounts';
+import { sendSetPassword } from '../../lib/email';
 
 const BACK = '/admin/passes';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,6 +33,13 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     try {
       const acct = await findOrCreateClient({ email, name: clientName, phone: null });
       clientId = acct.id;
+      if (acct.setPasswordUrl) {
+        try {
+          await sendSetPassword({ to: email, name: clientName, link: acct.setPasswordUrl, kind: 'welcome' });
+        } catch (e) {
+          console.error('pass welcome email failed', e);
+        }
+      }
     } catch {
       return fail('Could not find or create that client.');
     }

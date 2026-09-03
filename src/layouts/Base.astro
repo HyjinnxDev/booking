@@ -139,8 +139,15 @@ const { brand } = await getSettings();
           true,
         );
 
-        // Coming back via bfcache — clear any stale loading state.
-        addEventListener('pageshow', stop);
+        // Coming back via bfcache — clear any stale loading state, and re-enable
+        // buttons the submit handler disabled before the page was frozen.
+        addEventListener('pageshow', function () {
+          stop();
+          document.querySelectorAll('[aria-busy]').forEach(function (b) {
+            b.disabled = false;
+            b.removeAttribute('aria-busy');
+          });
+        });
         addEventListener('pagehide', stop);
       })();
     </script>

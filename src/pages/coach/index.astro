@@ -28,6 +28,7 @@ const dayCount = span === 'week' ? 7 : 1;
 const to = addDaysStr(from, dayCount);
 const rangeStart = fromZonedTime(`${from}T00:00:00`, BUSINESS_TZ).toISOString();
 const rangeEnd = fromZonedTime(`${to}T00:00:00`, BUSINESS_TZ).toISOString();
+const nowIso = new Date().toISOString();
 
 const flash = url.searchParams.get('cancelled')
   ? 'Booking cancelled — the client was emailed.'
@@ -194,7 +195,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                             </form>
                           )}
                           <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / cancel</a>
-                          {r.b.status === 'confirmed' && (
+                          {r.b.status === 'confirmed' && nowIso.localeCompare(r.at) >= 0 && (
                             <form method="POST" action={api} onsubmit="return confirm('Mark as a no-show?')">
                               <input type="hidden" name="action" value="booking.noshow" />
                               <input type="hidden" name="id" value={r.b.id} />

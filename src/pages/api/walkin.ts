@@ -45,11 +45,11 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const endAt = new Date(new Date(startAt).getTime() + variant.duration_min * 60_000).toISOString();
 
   let clientId: string;
-  let tempPassword: string | undefined;
+  let setPasswordUrl: string | undefined;
   try {
     const acct = await findOrCreateClient({ email, name, phone: null });
     clientId = acct.id;
-    tempPassword = acct.tempPassword;
+    setPasswordUrl = acct.setPasswordUrl;
   } catch {
     return bounce('fail');
   }
@@ -78,7 +78,10 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       bookingId: data.id,
       startAt,
       endAt,
-      newAccount: tempPassword ? { tempPassword } : undefined,
+      typeName: variant.type.name,
+      locationName: variant.type.location?.name,
+      locationAddress: variant.type.location?.address,
+      newAccount: setPasswordUrl ? { setPasswordUrl } : undefined,
     });
   } catch (e) {
     console.error('walk-in confirmation email failed', e);

@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import { fmtLong, fmtPrice } from '../lib/format';
 import { activePassesForClient } from '../lib/passes';
+import { getSettings } from '../lib/settings';
 
 const { locals, url, request } = Astro;
 const user = locals.user!; // middleware guarantees auth on /bookings
@@ -23,15 +24,22 @@ const { data: rows } = await supabase
   .from('bookings')
   .select(
     `id, start_at, end_at, status, notes, price_cents, payment_status, class_occurrence_id,
-     variant:session_variant_id ( name, session_types ( id, name ) )`,
+     variant:session_variant_id ( name, session_types ( id, name, cancel_cutoff_hours ) )`,
   )
   .eq('client_id', user.id)
   .order('start_at', { ascending: true });
 
 const passes = await activePassesForClient(user.id);
+const settings = await getSettings();
 
 const now = Date.now();
 const bookings = (rows ?? []) as any[];
+// §2.15: same lock as /m/[id] — don't offer a control that will bounce.
+const lockedFor = (b: any) => {
+  const cutoffH = b.variant?.session_types?.cancel_cutoff_hours ?? 0;
+  const lockMs = Math.max(settings.minNoticeMin * 60_000, cutoffH * 3600_000);
+  return new Date(b.start_at).getTime() <= now + lockMs;
+};
 const upcoming = bookings.filter((b) => new Date(b.start_at).getTime() > now && b.status === 'confirmed');
 const past = bookings
   .filter((b) => !(new Date(b.start_at).getTime() > now && b.status === 'confirmed'))
@@ -80,6 +88,9 @@ const chip = 'btn btn-ghost btn-sm';
       <p class="text-xs text-ink-soft sm:pb-2">{user.email}</p>
       <button class="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper hover:opacity-90">Save</button>
     </form>
+    <p class="border-t border-line px-4 py-2 text-sm">
+      <a href="/account/password" class="font-semibold text-ink underline underline-offset-2">Set or change password</a>
+    </p>
     {profileError && <p class="border-t border-line px-4 py-2 text-sm text-red-600">{profileError}</p>}
   </details>
 
@@ -118,15 +129,21 @@ const chip = 'btn btn-ghost btn-sm';
               {b.notes && <p class="mt-0.5 text-sm text-ink-soft">{b.notes}</p>}
             </div>
             <div class="flex shrink-0 items-center gap-2">
-              {!b.class_occurrence_id && (
-                <a href={`/m/${b.id}?reschedule=1`} class={chip}>
-                  Reschedule
-                </a>
+              {lockedFor(b) ? (
+                <span class="text-xs text-ink-soft">Too close to change online</span>
+              ) : (
+                <>
+                  {!b.class_occurrence_id && (
+                    <a href={`/m/${b.id}?reschedule=1`} class={chip}>
+                      Reschedule
+                    </a>
+                  )}
+                  <form method="POST" action={`/m/${b.id}`} onsubmit="return confirm('Cancel this booking?')">
+                    <input type="hidden" name="action" value="cancel" />
+                    <button class={chip}>Cancel</button>
+                  </form>
+                </>
               )}
-              <form method="POST" action={`/m/${b.id}`} onsubmit="return confirm('Cancel this booking?')">
-                <input type="hidden" name="action" value="cancel" />
-                <button class={chip}>Cancel</button>
-              </form>
             </div>
           </li>
         ))}

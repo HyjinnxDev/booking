@@ -1,0 +1,49 @@
+---
+import Base from '../layouts/Base.astro';
+import { recoveryLink } from '../lib/accounts';
+import { sendSetPassword } from '../lib/email';
+
+// §3.1: uses our own Resend send + a server-side recovery link, so it isn't
+// subject to Supabase's 2-emails/hour shared SMTP limit.
+let done = false;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = String(form.get('email') ?? '').trim().toLowerCase();
+  if (EMAIL_RE.test(email)) {
+    try {
+      const link = await recoveryLink(email);
+      if (link) await sendSetPassword({ to: email, name: '', link, kind: 'reset' });
+    } catch (e) {
+      console.error('forgot-password send failed', e);
+    }
+  }
+  done = true; // always — don't leak whether the address exists
+}
+---
+
+<Base title="Forgot password">
+  <div class="mx-auto max-w-sm">
+    <h1 class="text-3xl font-extrabold">Forgot password</h1>
+    {done ? (
+      <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">
+        If that email has an account, a link to set a new password is on its way. It expires in an hour.
+      </p>
+    ) : (
+      <>
+        <p class="mt-2 text-sm text-ink-soft">We'll email you a link to set a new password.</p>
+        <form method="POST" class="mt-6 flex flex-col gap-4">
+          <label class="text-sm">
+            <span class="font-semibold">Email</span>
+            <input type="email" name="email" required autocomplete="email" class="field mt-1" />
+          </label>
+          <button class="w-fit rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">
+            Send link
+          </button>
+        </form>
+      </>
+    )}
+    <a href="/login" class="mt-6 inline-block text-sm text-ink-soft hover:text-ink">← Back to sign in</a>
+  </div>
+</Base>

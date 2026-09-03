@@ -5,12 +5,21 @@ export interface Coach {
   name: string;
   email: string;
   active: boolean;
+  role: 'coach' | 'admin';
 }
 
-/** All coaches (role='coach'), newest last. */
+/**
+ * Everyone who can take bookings — coaches, plus admins who also coach (§3.6).
+ * `active` is the "takes bookings" flag; `activeOnly` filters to it.
+ */
 export async function listCoaches(opts: { activeOnly?: boolean } = {}): Promise<Coach[]> {
   const db = createSupabaseAdmin();
-  let q = db.from('profiles').select('id, name, email, active').eq('role', 'coach').order('created_at');
+  let q = db
+    .from('profiles')
+    .select('id, name, email, active, role')
+    .in('role', ['coach', 'admin'])
+    .order('role')
+    .order('created_at');
   if (opts.activeOnly) q = q.eq('active', true);
   const { data } = await q;
   return (data ?? []) as Coach[];
@@ -57,9 +66,21 @@ export async function getStaffScope(Astro: { locals: App.Locals; url: URL }): Pr
     return { coachId: user!.id, isSelf: true, coachName: profile?.name ?? '', needsPick: false };
   }
   const target = Astro.url.searchParams.get('coach');
-  if (!target) return { coachId: null, isSelf: false, coachName: '', needsPick: true };
+  // §3.6: an admin who also coaches (active=true) manages their own setup by
+  // default; one who only administers still gets the chooser.
+  if (!target) {
+    if (profile.active) {
+      return { coachId: user!.id, isSelf: true, coachName: profile.name ?? '', needsPick: false };
+    }
+    return { coachId: null, isSelf: false, coachName: '', needsPick: true };
+  }
   const db = createSupabaseAdmin();
-  const { data } = await db.from('profiles').select('name').eq('id', target).eq('role', 'coach').maybeSingle();
+  const { data } = await db
+    .from('profiles')
+    .select('name')
+    .eq('id', target)
+    .in('role', ['coach', 'admin'])
+    .maybeSingle();
   return {
     coachId: target,
     isSelf: target === user!.id,

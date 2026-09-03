@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
+import { randomBytes } from 'node:crypto';
 import { createSupabaseAdmin } from '../../lib/supabase';
-import { tempPassword } from '../../lib/accounts';
-import { sendStaffWelcome } from '../../lib/email';
+import { recoveryLink } from '../../lib/accounts';
+import { sendSetPassword } from '../../lib/email';
 
 const BACK = '/admin/staff';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,37 +23,39 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       if (!name || !EMAIL_RE.test(email)) return fail('A name and a valid email are required.');
 
       // Reuse an existing account (e.g. a past guest booker) or make a new one.
-      const { data: existing } = await admin.from('profiles').select('id').ilike('email', email).maybeSingle();
+      const { data: existing } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
       let id = existing?.id as string | undefined;
-      let tempPass: string | undefined;
+      let isNew = false;
       if (!id) {
-        tempPass = tempPassword();
         const { data, error } = await admin.auth.admin.createUser({
           email,
-          password: tempPass,
+          password: randomBytes(24).toString('hex'), // discarded — coach sets their own
           email_confirm: true,
           user_metadata: { name },
         });
         if (error || !data.user) return fail(error?.message ?? 'Could not create the account.');
         id = data.user.id;
+        isNew = true;
       }
 
-      // Promote to coach through the admin's own session so lock_role() allows it.
-      const { error: roleErr } = await locals.supabase
-        .from('profiles')
-        .update({ role: 'coach' })
-        .eq('id', id);
+      // §1.11: lock_role() now allows a null auth.uid() (service role), so the
+      // admin client can promote directly like every other staff write.
+      // §3.6: don't demote an existing admin to coach — just make them bookable.
+      const { data: cur } = await admin.from('profiles').select('role').eq('id', id).maybeSingle();
+      const patch: Record<string, unknown> = { name, active: true };
+      if (cur?.role !== 'admin') patch.role = 'coach';
+      const { error: roleErr } = await admin.from('profiles').update(patch).eq('id', id);
       if (roleErr) return fail(roleErr.message);
-      await admin.from('profiles').update({ name, active: true }).eq('id', id);
 
       const locs = form.getAll('location_id').map(String).filter(Boolean);
       if (locs.length) {
         await admin.from('staff_locations').insert(locs.map((location_id) => ({ staff_id: id, location_id })));
       }
 
-      if (tempPass) {
+      if (isNew) {
         try {
-          await sendStaffWelcome({ to: email, name, tempPassword: tempPass });
+          const link = await recoveryLink(email, '/coach');
+          if (link) await sendSetPassword({ to: email, name, link, kind: 'coach' });
         } catch (e) {
           console.error('staff welcome email failed', e);
         }
@@ -71,11 +74,12 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     }
 
     case 'staff.active': {
+      // For a coach this is "deactivate"; for an admin it's the "I also coach" toggle (§3.6).
       await admin
         .from('profiles')
         .update({ active: form.get('to') === 'true' })
         .eq('id', s('staff_id'))
-        .eq('role', 'coach');
+        .in('role', ['coach', 'admin']);
       return redirect(BACK);
     }
 

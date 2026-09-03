@@ -4,7 +4,7 @@ import { getCoachProfile } from '../../lib/coach';
 import { getAvailableSlots } from '../../lib/slots';
 import { getVariant } from '../../lib/sessions';
 import { createSupabaseAdmin } from '../../lib/supabase';
-import { sendReschedule, sendCancellation } from '../../lib/email';
+import { sendReschedule, sendCancellation, sendCoachNotice } from '../../lib/email';
 import { notifyWaitlist } from '../../lib/waitlist';
 import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt, localDay } from '../../lib/format';
 import { getSettings } from '../../lib/settings';
@@ -44,19 +44,18 @@ const variant = booking?.session_variant_id ? await getVariant(booking.session_v
 
 const cancelled = booking?.status !== 'confirmed'; // cancelled or no_show
 const past = booking ? new Date(booking.start_at).getTime() <= Date.now() : true;
-const noticeLocked = booking
-  ? new Date(booking.start_at).getTime() <= Date.now() + settings.minNoticeMin * 60_000
-  : true;
-// Per-service cancel cutoff (hours before start). 0 = cancel any time.
+// §2.7: one lock for both client reschedule AND cancel, so you can't dodge the
+// cancel cutoff by rescheduling far out first. lock = max(min-notice, cancel-cutoff).
 const cutoffH = (variant?.type as any)?.cancel_cutoff_hours ?? 0;
-const cutoffLocked = booking
-  ? new Date(booking.start_at).getTime() <= Date.now() + cutoffH * 3600_000
+const clientLockMs = Math.max(settings.minNoticeMin * 60_000, cutoffH * 3600_000);
+const clientLocked = booking
+  ? new Date(booking.start_at).getTime() <= Date.now() + clientLockMs
   : true;
 // Staff bypass every "too close / already passed" lock — they field the phone call
 // at 9am to move a 10am booking, or clean up a no-show.
-const canCancel = !!booking && !cancelled && (isStaff || (!past && !cutoffLocked));
+const canCancel = !!booking && !cancelled && (isStaff || (!past && !clientLocked));
 const canReschedule =
-  !!booking && isAppointment && !!variant && !cancelled && (isStaff || !noticeLocked);
+  !!booking && isAppointment && !!variant && !cancelled && (isStaff || !clientLocked);
 
 const today = todayStr();
 const maxDate = addDaysStr(today, settings.bookingWindowDays);
@@ -71,42 +70,71 @@ if (booking && request.method === 'POST' && !cancelled) {
   const form = await request.formData();
   const action = String(form.get('action') ?? '');
 
-  if (action === 'cancel' && canCancel) {
-    const nextSeq = (booking.ics_sequence ?? 0) + 1;
-    const { data: c } = await db
-      .from('bookings')
-      .update({ status: 'cancelled', ics_sequence: nextSeq })
-      .eq('id', booking.id)
-      .eq('status', 'confirmed')
-      .select('id')
-      .maybeSingle();
-    if (c) {
-      if (booking.class_occurrence_id) {
-        try {
-          await notifyWaitlist(booking.class_occurrence_id);
-        } catch (e) {
-          console.error('waitlist notify failed', e);
+  if (action === 'cancel') {
+    if (!canCancel) {
+      // §2.15: /bookings shows Cancel for everything; say why nothing happened.
+      error = 'Too close to the session to cancel online — contact your coach.';
+    } else {
+      const nextSeq = (booking.ics_sequence ?? 0) + 1;
+      const { data: c } = await db
+        .from('bookings')
+        .update({
+          status: 'cancelled',
+          ics_sequence: nextSeq,
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: isStaff ? 'staff' : 'client',
+        })
+        .eq('id', booking.id)
+        .eq('status', 'confirmed')
+        .select('id')
+        .maybeSingle();
+      if (c) {
+        if (booking.class_occurrence_id) {
+          try {
+            await notifyWaitlist(booking.class_occurrence_id);
+          } catch (e) {
+            console.error('waitlist notify failed', e);
+          }
         }
-      }
-      if (client.email) {
-        try {
-          await sendCancellation({
-            to: client.email,
-            clientName: client.name ?? '',
-            coachName: coach?.name ?? 'your coach',
-            bookingId: booking.id,
-            startAt: booking.start_at,
-            endAt: booking.end_at,
-            notes: booking.notes,
-            sequence: booking.ics_sequence ?? 0,
-          });
-        } catch (e) {
-          console.error('cancellation email failed', e);
+        if (client.email) {
+          try {
+            await sendCancellation({
+              to: client.email,
+              clientName: client.name ?? '',
+              coachName: coach?.name ?? 'your coach',
+              bookingId: booking.id,
+              startAt: booking.start_at,
+              endAt: booking.end_at,
+              notes: booking.notes,
+              typeName: variant?.type?.name,
+              locationName: (variant?.type as any)?.location?.name,
+              locationAddress: (variant?.type as any)?.location?.address,
+              sequence: booking.ics_sequence ?? 0,
+            });
+          } catch (e) {
+            console.error('cancellation email failed', e);
+          }
         }
+        // §3.2: tell the coach when the client cancels (not when staff do it).
+        if (!isStaff && coach?.email) {
+          try {
+            await sendCoachNotice({
+              to: coach.email,
+              coachName: coach.name ?? '',
+              kind: 'cancelled',
+              clientName: client.name ?? '',
+              startAt: booking.start_at,
+              typeName: variant?.type?.name ?? 'Session',
+              bookingId: booking.id,
+            });
+          } catch (e) {
+            console.error('coach notice failed', e);
+          }
+        }
+        return redirect(afterAction('cancelled'));
       }
-      return redirect(afterAction('cancelled'));
+      error = 'That booking could not be cancelled.';
     }
-    error = 'That booking could not be cancelled.';
   }
 
   if (action === 'reschedule' && canReschedule) {
@@ -128,7 +156,10 @@ if (booking && request.method === 'POST' && !cancelled) {
         .eq('id', booking.id)
         .eq('status', 'confirmed');
       if (e) {
-        error = e.code === '23505' ? 'That time was just taken. Pick another.' : 'Could not move the booking.';
+        error =
+          e.code === '23505' || e.code === '23P01'
+            ? 'That time was just taken. Pick another.'
+            : 'Could not move the booking.';
       } else {
         if (client.email) {
           try {
@@ -140,10 +171,29 @@ if (booking && request.method === 'POST' && !cancelled) {
               startAt,
               endAt,
               notes: booking.notes,
+              typeName: variant?.type?.name,
+              locationName: (variant?.type as any)?.location?.name,
+              locationAddress: (variant?.type as any)?.location?.address,
               sequence: nextSeq,
+              reason: 'moved',
             });
           } catch (err) {
             console.error('reschedule email failed', err);
+          }
+        }
+        if (!isStaff && coach?.email) {
+          try {
+            await sendCoachNotice({
+              to: coach.email,
+              coachName: coach.name ?? '',
+              kind: 'moved',
+              clientName: client.name ?? '',
+              startAt,
+              typeName: variant?.type?.name ?? 'Session',
+              bookingId: booking.id,
+            });
+          } catch (err) {
+            console.error('coach notice failed', err);
           }
         }
         return redirect(afterAction('rescheduled'));
@@ -186,7 +236,10 @@ if (booking && request.method === 'POST' && !cancelled) {
         .eq('id', booking.id)
         .eq('status', 'confirmed');
       if (e) {
-        error = e.code === '23505' ? 'That coach was just booked then.' : 'Could not reassign.';
+        error =
+          e.code === '23505' || e.code === '23P01'
+            ? 'That coach was just booked then.'
+            : 'Could not reassign.';
       } else {
         const nc = await getCoachProfile(newCoachId);
         if (client.email) {
@@ -199,10 +252,30 @@ if (booking && request.method === 'POST' && !cancelled) {
               startAt: booking.start_at,
               endAt: booking.end_at,
               notes: booking.notes,
+              typeName: variant?.type?.name,
+              locationName: (variant?.type as any)?.location?.name,
+              locationAddress: (variant?.type as any)?.location?.address,
               sequence: nextSeq,
+              reason: 'reassigned',
             });
           } catch (err) {
             console.error('reassign email failed', err);
+          }
+        }
+        // §3.2: the new coach inherits the booking.
+        if (nc?.email) {
+          try {
+            await sendCoachNotice({
+              to: nc.email,
+              coachName: nc.name ?? '',
+              kind: 'reassigned',
+              clientName: client.name ?? '',
+              startAt: booking.start_at,
+              typeName: variant?.type?.name ?? 'Session',
+              bookingId: booking.id,
+            });
+          } catch (err) {
+            console.error('coach notice failed', err);
           }
         }
         return redirect(afterAction('reassigned'));
@@ -253,6 +326,9 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
         {done === 'booked' && (
           <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
             Confirmation and a calendar invite are on their way to your email.
+            {url.searchParams.get('new') === '1' && (
+              <span> We also set up an account — there's a link in that email to set a password so you can manage this booking any time.</span>
+            )}
           </p>
         )}
         {done === 'rescheduled' && (
@@ -312,7 +388,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                   <input type="hidden" name="action" value="cancel" />
                   <button class="rounded-lg border border-line px-4 py-2 text-sm hover:border-ink">Cancel booking</button>
                 </form>
-              ) : !isStaff && !past && cutoffLocked ? (
+              ) : !isStaff && !past && clientLocked ? (
                 <span class="text-sm text-ink-soft">
                   Too close to the session to cancel online — contact {coach?.name ?? 'your coach'}.
                 </span>

@@ -215,7 +215,7 @@ const rangeLabel =
                             </form>
                           )}
                           <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / reassign / cancel</a>
-                          {r.b.status === 'confirmed' && (
+                          {r.b.status === 'confirmed' && nowIso.localeCompare(r.at) >= 0 && (
                             <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark as a no-show?')">
                               <input type="hidden" name="action" value="booking.noshow" />
                               <input type="hidden" name="id" value={r.b.id} />

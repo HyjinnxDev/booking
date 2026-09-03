@@ -9,7 +9,14 @@ declare global {
     interface Locals {
       supabase: SupabaseClient;
       user: User | null;
-      profile: { id: string; role: Role; name: string; email: string; phone: string | null } | null;
+      profile: {
+        id: string;
+        role: Role;
+        name: string;
+        email: string;
+        phone: string | null;
+        active: boolean;
+      } | null;
       /** Request is inside an embedded widget iframe — render without site chrome. */
       embed: boolean;
     }

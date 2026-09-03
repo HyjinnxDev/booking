@@ -13,7 +13,7 @@ import { todayStr, addDaysStr } from '../../../lib/format';
 // Idempotent: each run starts one week past the current latest occurrence, so a
 // second run the same day generates nothing.
 export const GET: APIRoute = async ({ request }) => {
-  if (CRON_SECRET && request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
+  if (request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 
