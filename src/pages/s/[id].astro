@@ -4,7 +4,7 @@ import { getSessionTypeById, upcomingOccurrences } from '../../lib/sessions';
 import { listLocations } from '../../lib/locations';
 import { getAvailableSlots } from '../../lib/slots';
 import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
-import { BOOKING_WINDOW_DAYS } from '../../lib/config';
+import { getSettings } from '../../lib/settings';
 
 const { params, url } = Astro;
 const type = await getSessionTypeById(params.id!);
@@ -21,7 +21,7 @@ const errors: Record<string, string> = {
 
 // ---- appointment state ----
 const today = todayStr();
-const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+const maxDate = addDaysStr(today, (await getSettings()).bookingWindowDays);
 let date = url.searchParams.get('date') || today;
 if (date < today) date = today;
 if (date > maxDate) date = maxDate;

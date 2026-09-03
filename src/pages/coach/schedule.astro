@@ -2,7 +2,7 @@
 import Coach from '../../layouts/Coach.astro';
 import { listSessionTypes, upcomingOccurrences } from '../../lib/sessions';
 import { fmtLong, todayStr, addDaysStr } from '../../lib/format';
-import { SERIES_WEEKS } from '../../lib/config';
+import { getSettings } from '../../lib/settings';
 import { getStaffScope } from '../../lib/staff';
 
 const { url } = Astro;
@@ -17,7 +17,7 @@ const classTypes = types.filter((t) => t.kind === 'class');
 const err = url.searchParams.get('error');
 const added = url.searchParams.get('added');
 const today = todayStr();
-const defaultUntil = addDaysStr(today, SERIES_WEEKS * 7);
+const defaultUntil = addDaysStr(today, (await getSettings()).seriesWeeks * 7);
 ---
 
 <Coach

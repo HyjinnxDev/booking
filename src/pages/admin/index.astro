@@ -1,70 +1,262 @@
 ---
 import Admin from '../../layouts/Admin.astro';
 import { createSupabaseAdmin } from '../../lib/supabase';
+import { upcomingOccurrences } from '../../lib/sessions';
 import { listCoaches } from '../../lib/staff';
-import { fmtTime, localDay, todayStr, addDaysStr, calFmt } from '../../lib/format';
+import { listLocations } from '../../lib/locations';
+import { fmtTime, fmtPrice, todayStr, addDaysStr, calFmt, localDay } from '../../lib/format';
+import { BUSINESS_TZ } from '../../lib/config';
+import { fromZonedTime } from 'date-fns-tz';
 
+const { url } = Astro;
 const db = createSupabaseAdmin();
-const weekEnd = new Date(Date.now() + 7 * 864e5).toISOString();
+
+const span = url.searchParams.get('span') === 'week' ? 'week' : 'day';
+let d = url.searchParams.get('d') || todayStr();
+if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = todayStr();
+const coachFilter = url.searchParams.get('coach') || '';
+const locFilter = url.searchParams.get('loc') || '';
+
+let from = d;
+if (span === 'week') {
+  const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+  from = addDaysStr(d, wd === 0 ? -6 : 1 - wd);
+}
+const dayCount = span === 'week' ? 7 : 1;
+const to = addDaysStr(from, dayCount);
+const rangeStart = fromZonedTime(`${from}T00:00:00`, BUSINESS_TZ).toISOString();
+const rangeEnd = fromZonedTime(`${to}T00:00:00`, BUSINESS_TZ).toISOString();
 const nowIso = new Date().toISOString();
 
-const [coaches, { data: upcoming }, { count: unpaid }] = await Promise.all([
+const flash = url.searchParams.get('cancelled')
+  ? 'Booking cancelled — the client was emailed.'
+  : url.searchParams.get('rescheduled')
+    ? 'Booking moved — the client was emailed.'
+    : url.searchParams.get('reassigned')
+      ? 'Booking reassigned — the client was emailed.'
+      : '';
+
+const [coaches, locations, { data: apptRows }, occAll, { data: blackouts }, { count: unpaid }] = await Promise.all([
   listCoaches(),
+  listLocations(),
   db
     .from('bookings')
-    .select('id, start_at, coach_id, status, client:client_id ( name ), variant:session_variant_id ( name, session_types ( name ) )')
+    .select(
+      'id, coach_id, start_at, status, notes, intake, price_cents, payment_status, pass_id, variant:session_variant_id ( name, session_types ( name, location_id ) ), client:client_id ( name, email, phone )',
+    )
+    .is('class_occurrence_id', null)
     .neq('status', 'cancelled')
-    .gte('start_at', nowIso)
-    .lt('start_at', weekEnd)
+    .gte('start_at', rangeStart)
+    .lt('start_at', rangeEnd)
     .order('start_at'),
+  upcomingOccurrences({ from: new Date(rangeStart) }),
+  db.from('blackout_dates').select('coach_id, date, reason').gte('date', from).lt('date', to),
   db.from('bookings').select('id', { count: 'exact', head: true }).eq('payment_status', 'unpaid').gte('start_at', nowIso),
 ]);
 
-const activeCoaches = coaches.filter((c) => c.active);
-const nameOf = (id: string) => coaches.find((c) => c.id === id)?.name ?? 'Coach';
-const rows = (upcoming ?? []) as any[];
-const days = Array.from({ length: 7 }, (_, i) => addDaysStr(todayStr(), i));
-const byDay = new Map(days.map((d) => [d, rows.filter((r) => localDay(r.start_at) === d)]));
+const activeCount = coaches.filter((c) => c.active).length;
+const coachName = (id: string) => coaches.find((c) => c.id === id)?.name ?? 'Coach';
+
+const matchCoach = (id: string) => !coachFilter || id === coachFilter;
+const matchLoc = (typeLocId: string | undefined | null) => !locFilter || typeLocId === locFilter;
+
+const appts = ((apptRows ?? []) as any[]).filter(
+  (b) => matchCoach(b.coach_id) && matchLoc(b.variant?.session_types?.location_id),
+);
+const classOcc = occAll.filter(
+  (o) => o.start_at < rangeEnd && matchCoach(o.type.coach_id) && matchLoc(o.type.location?.id),
+);
+
+const { data: rosterRows } =
+  classOcc.length > 0
+    ? await db
+        .from('bookings')
+        .select('id, class_occurrence_id, payment_status, client:client_id ( name, email )')
+        .in('class_occurrence_id', classOcc.map((o) => o.id))
+        .eq('status', 'confirmed')
+    : { data: [] as any[] };
+const roster = new Map<string, any[]>();
+for (const b of rosterRows ?? []) {
+  (roster.get(b.class_occurrence_id) ?? roster.set(b.class_occurrence_id, []).get(b.class_occurrence_id)!).push(b);
+}
+
+type Row =
+  | { at: string; day: string; kind: 'appt'; b: any }
+  | { at: string; day: string; kind: 'class'; o: any }
+  | { at: string; day: string; kind: 'blackout'; label: string };
+
+const rows: Row[] = [];
+for (const b of appts) rows.push({ at: b.start_at, day: localDay(b.start_at), kind: 'appt', b });
+for (const o of classOcc) rows.push({ at: o.start_at, day: localDay(o.start_at), kind: 'class', o });
+for (const bl of (blackouts ?? []) as any[]) {
+  if (!matchCoach(bl.coach_id)) continue;
+  rows.push({ at: `${bl.date}T00:00`, day: bl.date, kind: 'blackout', label: `${coachName(bl.coach_id)} closed${bl.reason ? ` — ${bl.reason}` : ''}` });
+}
+rows.sort((a, b) => a.at.localeCompare(b.at));
+
+const days = Array.from({ length: dayCount }, (_, i) => addDaysStr(from, i));
+const rowsByDay = new Map(days.map((day) => [day, rows.filter((r) => r.day === day)]));
+
+const prevD = addDaysStr(from, -dayCount);
+const nextD = addDaysStr(from, dayCount);
+const params: Record<string, string> = { span, d };
+if (coachFilter) params.coach = coachFilter;
+if (locFilter) params.loc = locFilter;
+const nav = (o: Record<string, string>) => `/admin?${new URLSearchParams({ ...params, ...o }).toString()}`;
+const rangeLabel =
+  span === 'week' ? `${calFmt(from, 'd MMM')} – ${calFmt(addDaysStr(from, 6), 'd MMM')}` : calFmt(d, 'EEEE d MMMM');
 ---
 
-<Admin title="Overview">
+<Admin title="Agenda">
+  <div slot="actions" class="flex items-center gap-1.5 text-sm">
+    <a href={nav({ d: prevD })} class="btn btn-ghost btn-sm" aria-label="Previous">←</a>
+    <a href={nav({ d: todayStr() })} class="btn btn-ghost btn-sm">Today</a>
+    <a href={nav({ d: nextD })} class="btn btn-ghost btn-sm" aria-label="Next">→</a>
+    <a href={nav({ span: span === 'day' ? 'week' : 'day' })} class="btn btn-ghost btn-sm">
+      {span === 'day' ? 'Week' : 'Day'}
+    </a>
+  </div>
+
   <div class="grid gap-3 sm:grid-cols-3">
-    <div class="card p-4">
+    <div class="card p-3">
       <p class="eyebrow">Active coaches</p>
-      <p class="mt-1 font-display text-2xl font-bold">{activeCoaches.length}<span class="text-base font-normal text-ink-soft">/{coaches.length}</span></p>
+      <p class="mt-1 font-display text-xl font-bold">{activeCount}<span class="text-sm font-normal text-ink-soft">/{coaches.length}</span></p>
     </div>
-    <div class="card p-4">
-      <p class="eyebrow">Bookings · next 7 days</p>
-      <p class="mt-1 font-display text-2xl font-bold">{rows.length}</p>
+    <div class="card p-3">
+      <p class="eyebrow">Booked · this {span}</p>
+      <p class="mt-1 font-display text-xl font-bold">{appts.length + classOcc.reduce((n, o) => n + o.seats_taken, 0)}</p>
     </div>
-    <div class="card p-4">
+    <div class="card p-3">
       <p class="eyebrow">Unpaid · upcoming</p>
-      <p class="mt-1 font-display text-2xl font-bold">{unpaid ?? 0}</p>
+      <p class="mt-1 font-display text-xl font-bold">{unpaid ?? 0}</p>
     </div>
   </div>
 
-  <p class="eyebrow mt-8">This week — all coaches</p>
-  <div class="mt-2 max-w-3xl space-y-4">
+  <form method="GET" class="mt-6 flex flex-wrap items-center gap-2 text-sm">
+    <input type="hidden" name="span" value={span} />
+    <input type="hidden" name="d" value={d} />
+    <select name="coach" class="field w-40" onchange="this.form.submit()">
+      <option value="">All coaches</option>
+      {coaches.map((c) => <option value={c.id} selected={c.id === coachFilter}>{c.name || c.email}</option>)}
+    </select>
+    {locations.length > 1 && (
+      <select name="loc" class="field w-40" onchange="this.form.submit()">
+        <option value="">All locations</option>
+        {locations.map((l) => <option value={l.id} selected={l.id === locFilter}>{l.name}</option>)}
+      </select>
+    )}
+    <noscript><button class="btn btn-ghost btn-sm">Filter</button></noscript>
+  </form>
+
+  {flash && <p class="mt-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">{flash}</p>}
+
+  <h2 class="mt-6 text-lg font-bold">{rangeLabel}</h2>
+
+  <div class="mt-3 max-w-3xl space-y-5">
     {
-      days.map((d) => {
-        const list = byDay.get(d) ?? [];
+      days.map((day) => {
+        const list = rowsByDay.get(day) ?? [];
         return (
           <section>
-            <p class="mb-1.5 text-sm font-semibold text-ink-soft">{calFmt(d, 'EEEE d MMM')}</p>
+            {span === 'week' && <p class="mb-1.5 text-sm font-semibold text-ink-soft">{calFmt(day, 'EEEE d MMM')}</p>}
             {list.length === 0 ? (
-              <p class="text-sm text-ink-soft">—</p>
+              <p class="text-sm text-ink-soft">{span === 'week' ? '—' : 'Nothing booked.'}</p>
             ) : (
               <div class="card rowlist">
-                {list.map((r) => (
-                  <a href={`/m/${r.id}`} class="flex items-center gap-2.5 px-4 py-2 text-sm hover:bg-paper">
-                    <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.start_at)}</span>
-                    <span class="min-w-0 flex-1 truncate">
-                      {r.client?.name || 'Client'}
-                      <span class="text-ink-soft"> · {r.variant?.session_types?.name ?? 'Session'}</span>
-                    </span>
-                    <span class="shrink-0 text-ink-soft">{nameOf(r.coach_id)}</span>
-                  </a>
-                ))}
+                {list.map((r) =>
+                  r.kind === 'blackout' ? (
+                    <div class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-ink-soft">
+                      <span class="w-6 shrink-0" />
+                      <span class="tnum w-16 shrink-0">All day</span>
+                      <span>{r.label}</span>
+                    </div>
+                  ) : r.kind === 'appt' ? (
+                    <details class="group">
+                      <summary class="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-paper">
+                        <span class="shrink-0 text-ink-soft transition group-open:rotate-90">›</span>
+                        <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.at)}</span>
+                        <span class="min-w-0 flex-1 truncate">
+                          {r.b.client?.name || 'Client'}
+                          <span class="text-ink-soft">
+                            {' · '}{r.b.variant?.session_types?.name ?? 'Session'}{' · '}{coachName(r.b.coach_id)}
+                          </span>
+                          {r.b.status === 'no_show' && <span class="text-ink-soft"> · no-show</span>}
+                        </span>
+                        {r.b.payment_status === 'unpaid' && (
+                          <span class="shrink-0 rounded bg-ink/5 px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft">
+                            {fmtPrice(r.b.price_cents)} due
+                          </span>
+                        )}
+                      </summary>
+                      <div class="space-y-2 border-t border-line bg-paper px-4 py-3 text-sm">
+                        <p class="text-ink-soft">
+                          {r.b.client?.email}
+                          {r.b.client?.phone ? ` · ${r.b.client.phone}` : ''}
+                          {r.b.variant?.name ? ` · ${r.b.variant.name}` : ''}
+                          {r.b.pass_id ? ' · pass' : ` · ${fmtPrice(r.b.price_cents)}`}
+                        </p>
+                        {r.b.notes && <p>{r.b.notes}</p>}
+                        {r.b.intake &&
+                          Object.entries(r.b.intake).map(([k, v]) => (
+                            <p class="text-ink-soft">
+                              <span class="font-semibold text-ink">{k}</span> — {v === true ? 'yes' : String(v)}
+                            </p>
+                          ))}
+                        <div class="flex flex-wrap gap-2 pt-1">
+                          {r.b.payment_status !== 'free' && (
+                            <form method="POST" action="/api/schedule">
+                              <input type="hidden" name="action" value="booking.pay" />
+                              <input type="hidden" name="id" value={r.b.id} />
+                              <input type="hidden" name="to" value={r.b.payment_status === 'paid' ? 'unpaid' : 'paid'} />
+                              <input type="hidden" name="back" value={nav({})} />
+                              <button class="btn btn-ghost btn-sm">
+                                {r.b.payment_status === 'paid' ? 'Mark unpaid' : 'Mark paid'}
+                              </button>
+                            </form>
+                          )}
+                          <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / reassign / cancel</a>
+                          {r.b.status === 'confirmed' && (
+                            <form method="POST" action="/api/schedule" onsubmit="return confirm('Mark as a no-show?')">
+                              <input type="hidden" name="action" value="booking.noshow" />
+                              <input type="hidden" name="id" value={r.b.id} />
+                              <input type="hidden" name="back" value={nav({})} />
+                              <button class="btn btn-ghost btn-sm btn-danger">No-show</button>
+                            </form>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  ) : (
+                    <details class="group">
+                      <summary class="flex cursor-pointer list-none items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-paper">
+                        <span class="shrink-0 text-ink-soft transition group-open:rotate-90">›</span>
+                        <span class="tnum w-16 shrink-0 font-semibold">{fmtTime(r.at)}</span>
+                        <span class="min-w-0 flex-1 truncate">
+                          {r.o.type.name}
+                          <span class="text-ink-soft">
+                            {' · '}{r.o.seats_taken}/{r.o.capacity}
+                            {r.o.waiting > 0 ? ` · ${r.o.waiting} waiting` : ''}
+                            {' · '}{coachName(r.o.type.coach_id)}
+                          </span>
+                        </span>
+                      </summary>
+                      <div class="border-t border-line bg-paper px-4 py-3 text-sm">
+                        {(roster.get(r.o.id) ?? []).length === 0 ? (
+                          <p class="text-ink-soft">No bookings yet.</p>
+                        ) : (
+                          <ul class="space-y-1">
+                            {(roster.get(r.o.id) ?? []).map((b: any) => (
+                              <li>
+                                <span class="font-medium">{b.client?.name || 'Client'}</span>
+                                <span class="text-ink-soft"> · {b.client?.email}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </details>
+                  ),
+                )}
               </div>
             )}
           </section>

@@ -1,0 +1,89 @@
+---
+// Snippet generator + live preview for the embeddable booking widget.
+// Pure client-side once rendered — no endpoint, the snippet is just a string.
+interface Props {
+  targets: { label: string; path: string }[];
+  /** Show the accent-colour control (admin builds branded buttons). */
+  allowAccent?: boolean;
+}
+const { targets, allowAccent = false } = Astro.props;
+---
+
+<div class="eb" data-allow-accent={allowAccent ? '1' : ''}>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">What to embed</span>
+      <select class="field" data-eb="path">
+        {targets.map((t) => <option value={t.path}>{t.label}</option>)}
+      </select>
+    </label>
+
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">Style</span>
+      <select class="field" data-eb="mode">
+        <option value="inline">Inline — sits in the page</option>
+        <option value="popup">Popup — a button opens it</option>
+      </select>
+    </label>
+
+    <label class="text-sm" data-eb-when="popup" hidden>
+      <span class="mb-1 block text-ink-soft">Button text</span>
+      <input class="field" data-eb="label" value="Book now" />
+    </label>
+
+    {allowAccent && (
+      <label class="text-sm" data-eb-when="popup" hidden>
+        <span class="mb-1 block text-ink-soft">Button colour</span>
+        <input class="field h-9 p-1" type="color" data-eb="accent" value="#17181a" />
+      </label>
+    )}
+  </div>
+
+  <p class="eyebrow mt-6">Paste this into your site</p>
+  <textarea class="field mt-1 font-mono text-xs" rows="3" readonly data-eb="out"></textarea>
+  <button type="button" class="btn btn-ghost btn-sm mt-2" data-eb="copy">Copy</button>
+
+  <p class="eyebrow mt-6">Preview</p>
+  <div class="card mt-1 p-3" data-eb="preview"></div>
+</div>
+
+<script>
+  import { embedSnippet } from '../lib/embed';
+
+  for (const root of document.querySelectorAll<HTMLElement>('.eb')) {
+    const origin = location.origin;
+    const get = (k: string) =>
+      root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-eb="${k}"]`);
+    const out = root.querySelector<HTMLTextAreaElement>('[data-eb="out"]')!;
+    const copy = root.querySelector<HTMLButtonElement>('[data-eb="copy"]')!;
+    const preview = root.querySelector<HTMLElement>('[data-eb="preview"]')!;
+
+    const render = () => {
+      const mode = get('mode')!.value as 'inline' | 'popup';
+      const path = get('path')!.value;
+      for (const el of root.querySelectorAll<HTMLElement>('[data-eb-when]')) {
+        el.hidden = el.dataset.ebWhen !== mode;
+      }
+      out.value = embedSnippet({
+        origin,
+        path,
+        mode,
+        label: get('label')?.value || undefined,
+        accent: get('accent')?.value || undefined,
+      });
+      preview.innerHTML = '';
+      const f = document.createElement('iframe');
+      f.src = origin + path + '?embed=1';
+      f.style.cssText = 'width:100%;height:520px;border:0;background:#fcfbf9';
+      preview.appendChild(f);
+    };
+
+    root.addEventListener('input', render);
+    copy.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(out.value);
+      copy.textContent = 'Copied';
+      setTimeout(() => (copy.textContent = 'Copy'), 1500);
+    });
+    render();
+  }
+</script>

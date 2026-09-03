@@ -9,10 +9,12 @@ const { title, desc } = Astro.props;
 const path = Astro.url.pathname;
 
 const tabs = [
-  { href: '/admin', label: 'Overview' },
+  { href: '/admin', label: 'Agenda' },
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/locations', label: 'Locations' },
   { href: '/admin/passes', label: 'Passes' },
+  { href: '/admin/settings', label: 'Settings' },
+  { href: '/admin/embed', label: 'Embed' },
 ];
 const active = (href: string) => (href === '/admin' ? path === '/admin' : path.startsWith(href));
 ---

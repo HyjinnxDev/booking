@@ -1,0 +1,32 @@
+---
+import Coach from '../../layouts/Coach.astro';
+import EmbedBuilder from '../../components/EmbedBuilder.astro';
+import { getStaffScope } from '../../lib/staff';
+import { listSessionTypes } from '../../lib/sessions';
+import { listOfferings } from '../../lib/offerings';
+
+const scope = await getStaffScope(Astro);
+if (scope.needsPick) return Astro.redirect('/admin/staff');
+const coachId = scope.coachId!;
+
+const [types, offerings] = await Promise.all([listSessionTypes(coachId, { activeOnly: true }), listOfferings()]);
+
+const targets = [
+  ...types.filter((t) => t.variants.length).map((t) => ({ label: t.name, path: `/s/${t.id}` })),
+  ...offerings
+    .filter((o) => o.coaches.length > 1 && o.coaches.some((c) => c.id === coachId))
+    .map((o) => ({ label: `${o.name} — all coaches`, path: `/g/${o.slug}` })),
+];
+---
+
+<Coach
+  title="Embed"
+  desc="Put your booking page on your own website — paste one line into your site's HTML."
+  editingCoach={scope.isSelf ? undefined : scope.coachName}
+>
+  {targets.length === 0 ? (
+    <p class="text-sm text-ink-soft">Add a visible session type first, then come back for its embed code.</p>
+  ) : (
+    <EmbedBuilder targets={targets} />
+  )}
+</Coach>

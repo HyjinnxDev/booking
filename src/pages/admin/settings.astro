@@ -1,0 +1,67 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { getSettings } from '../../lib/settings';
+
+const { url } = Astro;
+const s = await getSettings();
+const saved = url.searchParams.get('saved');
+const err = url.searchParams.get('error');
+---
+
+<Admin title="Settings" desc="Booking rules for the whole business. Changes take up to a minute to apply everywhere.">
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {saved && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Saved.</p>}
+
+  <form method="POST" action="/api/settings" class="card max-w-lg divide-y divide-line">
+    <label class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <span>
+        <span class="font-semibold">Business name</span>
+        <span class="mt-0.5 block text-xs text-ink-soft">Shown in the header and emails.</span>
+      </span>
+      <input name="brand" value={s.brand} class="field w-48" />
+    </label>
+    <label class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <span>
+        <span class="font-semibold">Booking window</span>
+        <span class="mt-0.5 block text-xs text-ink-soft">How far ahead clients can book.</span>
+      </span>
+      <span class="flex items-center gap-1">
+        <input type="number" name="booking_window_days" value={s.bookingWindowDays} min="1" max="365" class="field w-20" />
+        <span class="text-ink-soft">days</span>
+      </span>
+    </label>
+    <label class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <span>
+        <span class="font-semibold">Minimum notice</span>
+        <span class="mt-0.5 block text-xs text-ink-soft">Slots inside this window disappear; it's also the online cancel cutoff.</span>
+      </span>
+      <span class="flex items-center gap-1">
+        <input type="number" name="min_notice_min" value={s.minNoticeMin} min="0" max="10080" step="15" class="field w-20" />
+        <span class="text-ink-soft">min</span>
+      </span>
+    </label>
+    <label class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <span>
+        <span class="font-semibold">Slot step</span>
+        <span class="mt-0.5 block text-xs text-ink-soft">Grid granularity for appointment start times. Keep it the GCD of your session lengths.</span>
+      </span>
+      <span class="flex items-center gap-1">
+        <input type="number" name="slot_step_min" value={s.slotStepMin} min="5" max="120" step="5" class="field w-20" />
+        <span class="text-ink-soft">min</span>
+      </span>
+    </label>
+    <label class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <span>
+        <span class="font-semibold">Class series length</span>
+        <span class="mt-0.5 block text-xs text-ink-soft">Default weeks a repeating class is scheduled ahead (and how far the top-up cron extends it).</span>
+      </span>
+      <span class="flex items-center gap-1">
+        <input type="number" name="series_weeks" value={s.seriesWeeks} min="1" max="52" class="field w-20" />
+        <span class="text-ink-soft">weeks</span>
+      </span>
+    </label>
+    <div class="p-4">
+      <button class="btn">Save settings</button>
+    </div>
+  </form>
+</Admin>

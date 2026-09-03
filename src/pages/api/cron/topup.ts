@@ -3,7 +3,8 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { CRON_SECRET } from 'astro:env/server';
 import { createSupabaseAdmin } from '../../../lib/supabase';
 import { weeklySeries } from '../../../lib/sessions';
-import { BUSINESS_TZ, SERIES_WEEKS } from '../../../lib/config';
+import { BUSINESS_TZ } from '../../../lib/config';
+import { getSettings } from '../../../lib/settings';
 import { todayStr, addDaysStr } from '../../../lib/format';
 
 // Daily Vercel Cron -> extends each active weekly class series back out to
@@ -17,7 +18,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const db = createSupabaseAdmin();
-  const targetDate = addDaysStr(todayStr(), SERIES_WEEKS * 7);
+  const targetDate = addDaysStr(todayStr(), (await getSettings()).seriesWeeks * 7);
 
   const { data: rows, error } = await db
     .from('class_occurrences')

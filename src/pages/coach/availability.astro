@@ -1,6 +1,6 @@
 ---
 import Coach from '../../layouts/Coach.astro';
-import { SLOT_STEP_MIN } from '../../lib/config';
+import { getSettings } from '../../lib/settings';
 import { getStaffScope } from '../../lib/staff';
 
 const { locals, url } = Astro;
@@ -9,6 +9,7 @@ if (scope.needsPick) return Astro.redirect('/admin/staff');
 const coachId = scope.coachId!;
 const apiA = scope.isSelf ? '/api/availability' : `/api/availability?coach=${coachId}`;
 const apiB = scope.isSelf ? '/api/blackouts' : `/api/blackouts?coach=${coachId}`;
+const stepMin = (await getSettings()).slotStepMin;
 const todayIso = new Date().toISOString().slice(0, 10);
 
 const [{ data: rules }, { data: blackouts }] = await Promise.all([
@@ -34,7 +35,7 @@ const hhmm = (t: string) => t.slice(0, 5);
 
 <Coach
   title="Hours"
-  desc={`Business timezone. Appointment start times step every ${SLOT_STEP_MIN} minutes inside these windows; each session's length is set on the Sessions tab.`}
+  desc={`Business timezone. Appointment start times step every ${stepMin} minutes inside these windows; each session's length is set on the Sessions tab.`}
   editingCoach={scope.isSelf ? undefined : scope.coachName}
 >
   {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}

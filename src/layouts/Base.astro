@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-import { BRAND } from '../lib/config';
+import { getSettings } from '../lib/settings';
 
 interface Props {
   title?: string;
@@ -8,9 +8,10 @@ interface Props {
   wide?: boolean;
 }
 const { title, wide } = Astro.props;
-const { user, profile } = Astro.locals;
+const { user, profile, embed } = Astro.locals;
 const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
 const path = Astro.url.pathname;
+const { brand } = await getSettings();
 ---
 
 <!doctype html>
@@ -18,7 +19,7 @@ const path = Astro.url.pathname;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title ? `${title} · ${BRAND}` : BRAND}</title>
+    <title>{title ? `${title} · ${brand}` : brand}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Load fonts without blocking first paint; system-ui shows immediately, swaps in. -->
@@ -36,11 +37,10 @@ const path = Astro.url.pathname;
     </noscript>
   </head>
   <body class="flex min-h-full flex-col">
+    {!embed && (
     <header class="border-b border-line">
       <nav class="mx-auto flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-1 px-5 py-4">
-        <a href="/" class="mr-1 font-display text-lg tracking-tight">
-          <span class="font-medium">Techni</span><span class="font-extrabold">Court</span>
-        </a>
+        <a href="/" class="mr-1 font-display text-lg font-extrabold tracking-tight">{brand}</a>
         <a href="/" class:list={['text-sm hover:text-ink', path === '/' ? 'text-ink' : 'text-ink-soft']}>Book</a>
         {
           user && (
@@ -84,20 +84,39 @@ const path = Astro.url.pathname;
         }
       </nav>
     </header>
+    )}
 
     <main
       class:list={[
-        'mx-auto w-full flex-1 px-5',
-        wide ? 'max-w-5xl py-7' : 'max-w-3xl py-10 sm:py-14',
+        'mx-auto w-full flex-1',
+        embed ? 'max-w-3xl px-4 py-6' : wide ? 'max-w-5xl px-5 py-7' : 'max-w-3xl px-5 py-10 sm:py-14',
       ]}
     >
       <slot />
     </main>
 
+    {!embed && (
     <footer class="border-t border-line">
       <div class="mx-auto max-w-3xl px-5 py-5 text-xs text-ink-soft">
-        {BRAND} · tennis coaching, {new Date().getFullYear()}
+        {brand} · tennis coaching, {new Date().getFullYear()}
       </div>
     </footer>
+    )}
+
+    {embed && (
+      <script is:inline>
+        (function () {
+          // The layout is min-height:100% — inside a fixed iframe that would
+          // never let scrollHeight shrink. Let content set the height instead.
+          document.documentElement.style.height = 'auto';
+          document.body.style.minHeight = '0';
+          var post = function () {
+            parent.postMessage({ type: 'technicourt:height', height: document.body.scrollHeight }, '*');
+          };
+          new ResizeObserver(post).observe(document.body);
+          addEventListener('load', post);
+        })();
+      </script>
+    )}
   </body>
 </html>

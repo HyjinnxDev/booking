@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import { getOffering } from '../../lib/offerings';
 import { mergeAvailability } from '../../lib/slots';
 import { fmtTime, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
-import { BOOKING_WINDOW_DAYS } from '../../lib/config';
+import { getSettings } from '../../lib/settings';
 
 const { params, url } = Astro;
 const offering = await getOffering(params.slug!);
@@ -13,7 +13,7 @@ if (offering.coaches.length === 1) return Astro.redirect(`/s/${offering.coaches[
 
 const errorCode = url.searchParams.get('error');
 const today = todayStr();
-const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+const maxDate = addDaysStr(today, (await getSettings()).bookingWindowDays);
 
 let date = url.searchParams.get('date') || today;
 if (date < today) date = today;

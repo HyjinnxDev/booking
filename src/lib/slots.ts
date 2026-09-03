@@ -41,6 +41,7 @@ export function computeSlots(opts: {
   tz: string;
   durationMin: number;
   stepMin?: number;
+  noticeMin?: number;
   rules: AvailabilityRule[];
   busy: BusyRange[];
   isBlackout: boolean;
@@ -51,6 +52,7 @@ export function computeSlots(opts: {
     tz,
     durationMin,
     stepMin = SLOT_STEP_MIN,
+    noticeMin = MIN_NOTICE_MIN,
     rules,
     busy,
     isBlackout,
@@ -64,7 +66,7 @@ export function computeSlots(opts: {
 
   const seen = new Set<number>();
   const out: Slot[] = [];
-  const earliest = now.getTime() + MIN_NOTICE_MIN * 60_000;
+  const earliest = now.getTime() + noticeMin * 60_000;
 
   for (const rule of rules) {
     if (rule.weekday !== wd) continue;
@@ -97,7 +99,9 @@ export async function getAvailableSlots(
   // Dynamic import keeps `astro:env/server` out of the pure-logic module so it
   // stays unit-testable without the Astro build pipeline.
   const { createSupabaseAdmin } = await import('./supabase');
+  const { getSettings } = await import('./settings');
   const db = createSupabaseAdmin();
+  const settings = await getSettings();
 
   const dayStart = fromZonedTime(`${dateStr}T00:00:00`, BUSINESS_TZ);
   const winStart = new Date(dayStart.getTime() - 12 * 3600_000); // catch a class that started before midnight
@@ -131,6 +135,8 @@ export async function getAvailableSlots(
     dateStr,
     tz: BUSINESS_TZ,
     durationMin,
+    stepMin: settings.slotStepMin,
+    noticeMin: settings.minNoticeMin,
     rules: rules.data ?? [],
     busy,
     isBlackout: (blackout.data ?? []).length > 0,

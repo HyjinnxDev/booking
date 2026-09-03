@@ -6,8 +6,9 @@ import { getVariant } from '../../lib/sessions';
 import { createSupabaseAdmin } from '../../lib/supabase';
 import { sendReschedule, sendCancellation } from '../../lib/email';
 import { notifyWaitlist } from '../../lib/waitlist';
-import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
-import { BOOKING_WINDOW_DAYS, MIN_NOTICE_MIN } from '../../lib/config';
+import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt, localDay } from '../../lib/format';
+import { getSettings } from '../../lib/settings';
+import { listCoaches } from '../../lib/staff';
 
 // Manage one booking. The booking id in the URL is the capability token — holding
 // the link (from the confirmation email, or from /bookings) is what authorises
@@ -19,22 +20,24 @@ const db = createSupabaseAdmin();
 const { data: booking } = await db
   .from('bookings')
   .select(
-    `id, coach_id, start_at, end_at, status, notes, ics_sequence, price_cents,
+    `id, coach_id, start_at, end_at, status, notes, ics_sequence, price_cents, payment_status, pass_id,
      class_occurrence_id, session_variant_id,
      client:client_id ( name, email )`,
   )
   .eq('id', id)
   .maybeSingle();
 
-const done = url.searchParams.get('done'); // 'cancelled' | 'rescheduled' | 'booked'
+const done = url.searchParams.get('done'); // 'cancelled' | 'rescheduled' | 'booked' | 'reassigned'
+const settings = await getSettings();
 const coach = booking ? await getCoachProfile(booking.coach_id) : null;
 const isStaff = locals.profile?.role === 'coach' || locals.profile?.role === 'admin';
+const isAdmin = locals.profile?.role === 'admin';
 const backToApp = !!locals.user;
 
 // Where to send a logged-in user after an action. Staff manage clients' bookings,
 // so they go back to the dashboard, not their own (empty) bookings list.
-const afterAction = (verb: 'cancelled' | 'rescheduled') =>
-  isStaff ? `/coach?${verb}=1` : backToApp ? `/bookings?${verb}=1` : `/m/${id}?done=${verb}`;
+const afterAction = (verb: 'cancelled' | 'rescheduled' | 'reassigned') =>
+  isAdmin ? `/admin?${verb}=1` : isStaff ? `/coach?${verb}=1` : backToApp ? `/bookings?${verb}=1` : `/m/${id}?done=${verb}`;
 
 const isAppointment = booking ? !booking.class_occurrence_id && !!booking.session_variant_id : false;
 const variant = booking?.session_variant_id ? await getVariant(booking.session_variant_id) : null;
@@ -42,7 +45,7 @@ const variant = booking?.session_variant_id ? await getVariant(booking.session_v
 const cancelled = booking?.status !== 'confirmed'; // cancelled or no_show
 const past = booking ? new Date(booking.start_at).getTime() <= Date.now() : true;
 const noticeLocked = booking
-  ? new Date(booking.start_at).getTime() <= Date.now() + MIN_NOTICE_MIN * 60_000
+  ? new Date(booking.start_at).getTime() <= Date.now() + settings.minNoticeMin * 60_000
   : true;
 // Per-service cancel cutoff (hours before start). 0 = cancel any time.
 const cutoffH = (variant?.type as any)?.cancel_cutoff_hours ?? 0;
@@ -56,7 +59,7 @@ const canReschedule =
   !!booking && isAppointment && !!variant && !cancelled && (isStaff || !noticeLocked);
 
 const today = todayStr();
-const maxDate = addDaysStr(today, BOOKING_WINDOW_DAYS);
+const maxDate = addDaysStr(today, settings.bookingWindowDays);
 let date = url.searchParams.get('date') || today;
 if (date < today) date = today;
 if (date > maxDate) date = maxDate;
@@ -147,7 +150,71 @@ if (booking && request.method === 'POST' && !cancelled) {
       }
     }
   }
+
+  // Admin only: hand an appointment to a different coach, same time.
+  if (action === 'reassign' && isAdmin && isAppointment && !past && !booking.pass_id) {
+    const newCoachId = String(form.get('coach_id') ?? '');
+    const dur = variant!.duration_min;
+    const { data: v2 } = await db
+      .from('session_variants')
+      .select('id, price_cents, session_types!inner ( coach_id, kind, active )')
+      .eq('active', true)
+      .eq('duration_min', dur)
+      .eq('session_types.coach_id', newCoachId)
+      .eq('session_types.kind', 'appointment')
+      .eq('session_types.active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!newCoachId || newCoachId === booking.coach_id) {
+      error = 'Pick a different coach.';
+    } else if (!v2) {
+      error = 'That coach has no matching session at this length.';
+    } else if (
+      !(await getAvailableSlots(newCoachId, localDay(booking.start_at), dur)).some((s) => s.startAt === booking.start_at)
+    ) {
+      error = 'That coach is not free at this time.';
+    } else {
+      const nextSeq = (booking.ics_sequence ?? 0) + 1;
+      const repriced =
+        booking.payment_status === 'unpaid' || booking.payment_status === 'free'
+          ? { price_cents: v2.price_cents, payment_status: v2.price_cents === 0 ? 'free' : 'unpaid' }
+          : {};
+      const { error: e } = await db
+        .from('bookings')
+        .update({ coach_id: newCoachId, session_variant_id: v2.id, reminded_at: null, ics_sequence: nextSeq, ...repriced })
+        .eq('id', booking.id)
+        .eq('status', 'confirmed');
+      if (e) {
+        error = e.code === '23505' ? 'That coach was just booked then.' : 'Could not reassign.';
+      } else {
+        const nc = await getCoachProfile(newCoachId);
+        if (client.email) {
+          try {
+            await sendReschedule({
+              to: client.email,
+              clientName: client.name ?? '',
+              coachName: nc?.name ?? 'your coach',
+              bookingId: booking.id,
+              startAt: booking.start_at,
+              endAt: booking.end_at,
+              notes: booking.notes,
+              sequence: nextSeq,
+            });
+          } catch (err) {
+            console.error('reassign email failed', err);
+          }
+        }
+        return redirect(afterAction('reassigned'));
+      }
+    }
+  }
 }
+
+const reassignCoaches =
+  isAdmin && isAppointment && !cancelled && !past && !booking?.pass_id
+    ? (await listCoaches({ activeOnly: true })).filter((c) => c.id !== booking!.coach_id)
+    : [];
 
 const showPicker = canReschedule && url.searchParams.get('reschedule') === '1';
 const slots = showPicker ? await getAvailableSlots(booking!.coach_id, date, variant!.duration_min) : [];
@@ -191,6 +258,11 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
         {done === 'rescheduled' && (
           <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
             Moved. A calendar update is on its way.
+          </p>
+        )}
+        {done === 'reassigned' && (
+          <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
+            Reassigned. The client has been emailed.
           </p>
         )}
         {done === 'cancelled' && (
@@ -245,6 +317,18 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                   Too close to the session to cancel online — contact {coach?.name ?? 'your coach'}.
                 </span>
               ) : null}
+
+              {reassignCoaches.length > 0 && (
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="action" value="reassign" />
+                  <select name="coach_id" class="field w-40">
+                    {reassignCoaches.map((c) => (
+                      <option value={c.id}>{c.name || c.email}</option>
+                    ))}
+                  </select>
+                  <button class="rounded-lg border border-line px-4 py-2 text-sm hover:border-ink">Reassign coach</button>
+                </form>
+              )}
             </div>
           ))
         }

@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { fromZonedTime } from 'date-fns-tz';
 import { createSupabaseAdmin } from '../../lib/supabase';
 import { weeklySeries } from '../../lib/sessions';
-import { BUSINESS_TZ, SERIES_WEEKS } from '../../lib/config';
+import { BUSINESS_TZ } from '../../lib/config';
+import { getSettings } from '../../lib/settings';
 import { addDaysStr, todayStr } from '../../lib/format';
 import { sendCancellation } from '../../lib/email';
 
@@ -85,7 +86,7 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
       const repeat = form.get('repeat') === 'on';
       let rows: { start_at: string; end_at: string }[];
       if (repeat) {
-        const maxUntil = addDaysStr(todayStr(), SERIES_WEEKS * 7);
+        const maxUntil = addDaysStr(todayStr(), (await getSettings()).seriesWeeks * 7);
         let until = s('until');
         if (!DATE.test(until) || until > maxUntil) until = maxUntil;
         if (until < date) return fail('"Repeat until" is before the start date.');
