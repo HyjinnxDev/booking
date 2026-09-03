@@ -41,6 +41,10 @@ Vercel at `bookings.technicourt.com`.
 - **Passes / packs** (`/coach/passes`) — issue a bundle, client redeems at checkout, cancel refunds the credit
 - **Cancel cutoff** per session type + a **no-show** status set from the roster
 - **Coach calendar** (`/coach/calendar`) — day/week agenda + walk-in booking
+- **Multi-staff** — an admin (`/admin`) creates coaches, assigns them to locations,
+  oversees all bookings, and can edit any coach's setup. Coaches manage only their own.
+- **Multi-coach booking** — same-named sessions across coaches group into one
+  offering (`/g/<slug>`); the client picks a coach or "any available" (round-robin)
 
 See `ROADMAP.md` for what's next and the open flags.
 

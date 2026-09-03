@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { getPrimaryCoach } from '../../lib/coach';
+import { getCoachProfile } from '../../lib/coach';
 import { getAvailableSlots } from '../../lib/slots';
 import { getVariant } from '../../lib/sessions';
 import { createSupabaseAdmin } from '../../lib/supabase';
@@ -27,7 +27,7 @@ const { data: booking } = await db
   .maybeSingle();
 
 const done = url.searchParams.get('done'); // 'cancelled' | 'rescheduled' | 'booked'
-const coach = await getPrimaryCoach();
+const coach = booking ? await getCoachProfile(booking.coach_id) : null;
 const isStaff = locals.profile?.role === 'coach' || locals.profile?.role === 'admin';
 const backToApp = !!locals.user;
 

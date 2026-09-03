@@ -92,6 +92,25 @@ Full clean-and-condense pass on `/coach/*`:
   `.card`, `.rowlist`, `.eyebrow`. Applied site-wide, incl. the `/s/[id]` + `/m/[id]`
   date pickers.
 
+## Admin / coach roles (done)
+
+- **Roles nailed down.** `admin` = create coaches, assign locations, oversee
+  everything, edit any coach's setup. `coach` = own sessions / hours / classes /
+  bookings only. `client` unchanged. Migration `0013` (`profiles.active`,
+  `staff_locations`, `grant update(role)`).
+- **`/admin`** console (middleware-gated): Overview (all-coach week), Staff
+  (add coach → account + temp-password email, assign locations, activate),
+  Locations + Passes (moved from `/coach`).
+- **Admin edits any coach** via `/coach/*?coach=<id>` (`getStaffScope`); the
+  `schedule` / `services` / `availability` / `blackouts` / `walkin` APIs honour
+  an admin target coach.
+- **Multi-coach public booking.** `/` groups same-named sessions into offerings;
+  a 2+-coach offering → `/g/<slug>` with a coach list **and** an "any available"
+  panel (`mergeAvailability` + `pickCoach` round-robin). `/book` gained a
+  `group` branch. `getPrimaryCoach()` retired → `getCoachProfile(id)`.
+  *Later:* coach bios/photos on `/g`, per-location slug disambiguation,
+  deactivated-coach sign-in handling, class co-teaching.
+
 ## ⚠ Flags / roadblocks from round 1
 
 - **Vercel deploy** — RESOLVED for production. Round 1 was merged to `main` and deployed

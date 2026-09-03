@@ -136,3 +136,52 @@ export async function getAvailableSlots(
     isBlackout: (blackout.data ?? []).length > 0,
   });
 }
+
+export interface MergedSlot {
+  startAt: string;
+  coachIds: string[]; // coaches free at this time
+}
+
+/** Union of several coaches' open slots for a date + duration. */
+export async function mergeAvailability(
+  coachIds: string[],
+  dateStr: string,
+  durationMin: number,
+): Promise<MergedSlot[]> {
+  const per = await Promise.all(
+    coachIds.map((id) => getAvailableSlots(id, dateStr, durationMin).then((slots) => ({ id, slots }))),
+  );
+  const map = new Map<string, string[]>();
+  for (const { id, slots } of per) {
+    for (const s of slots) {
+      const list = map.get(s.startAt) ?? [];
+      list.push(id);
+      map.set(s.startAt, list);
+    }
+  }
+  return [...map.entries()]
+    .map(([startAt, ids]) => ({ startAt, coachIds: ids }))
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+}
+
+/** Round-robin: the coach with the fewest confirmed bookings on that date. */
+export async function pickCoach(coachIds: string[], startAt: string): Promise<string> {
+  if (coachIds.length === 1) return coachIds[0];
+  const { createSupabaseAdmin } = await import('./supabase');
+  const db = createSupabaseAdmin();
+  const day = startAt.slice(0, 10);
+  const counts = await Promise.all(
+    coachIds.map(async (id) => {
+      const { count } = await db
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('coach_id', id)
+        .eq('status', 'confirmed')
+        .gte('start_at', `${day}T00:00:00Z`)
+        .lte('start_at', `${day}T23:59:59Z`);
+      return { id, count: count ?? 0 };
+    }),
+  );
+  counts.sort((a, b) => a.count - b.count || a.id.localeCompare(b.id));
+  return counts[0].id;
+}

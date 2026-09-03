@@ -1,8 +1,9 @@
 ---
 import Base from '../layouts/Base.astro';
-import { getPrimaryCoach } from '../lib/coach';
-import { getAvailableSlots } from '../lib/slots';
-import { getVariant, getOccurrence } from '../lib/sessions';
+import { getCoachProfile } from '../lib/coach';
+import { getAvailableSlots, mergeAvailability, pickCoach } from '../lib/slots';
+import { getVariant, getOccurrence, getSessionTypeById } from '../lib/sessions';
+import { getOffering } from '../lib/offerings';
 import { createSupabaseAdmin } from '../lib/supabase';
 import { findOrCreateClient } from '../lib/accounts';
 import { sendConfirmation } from '../lib/email';
@@ -16,15 +17,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const variantId = url.searchParams.get('variant') ?? '';
 const occId = url.searchParams.get('occ') ?? '';
+const groupSlug = url.searchParams.get('group') ?? '';
+const groupDur = Number(url.searchParams.get('dur')) || 0;
 const startAtParam = url.searchParams.get('start_at') ?? '';
 const date = url.searchParams.get('date') ?? '';
-
-const coach = await getPrimaryCoach();
-if (!coach) return redirect('/?error=unknown');
 
 // Resolve what's being booked into a common shape.
 interface BookCtx {
   kind: 'appointment' | 'class';
+  coachId: string;
+  coachName: string;
   typeId: string;
   typeName: string;
   variantId: string;
@@ -42,13 +44,18 @@ interface BookCtx {
 let ctx: BookCtx | null = null;
 
 const noticeCutoff = Date.now() + MIN_NOTICE_MIN * 60_000;
+const maxDate = addDaysStr(todayStr(), BOOKING_WINDOW_DAYS);
+const dateOk = !!date && date >= todayStr() && date <= maxDate;
 
 if (occId) {
   const occ = await getOccurrence(occId);
   if (!occ || new Date(occ.start_at).getTime() <= noticeCutoff) return redirect('/?error=slot_taken');
   if (occ.seats_taken >= occ.capacity) return redirect(`/s/${occ.type.id}?error=full`);
+  const coach = await getCoachProfile(occ.type.coach_id);
   ctx = {
     kind: 'class',
+    coachId: occ.type.coach_id,
+    coachName: coach?.name ?? 'your coach',
     typeId: occ.type.id,
     typeName: occ.type.name,
     variantId: occ.variant.id,
@@ -65,13 +72,14 @@ if (occId) {
 } else if (variantId) {
   const v = await getVariant(variantId);
   if (!v || !v.active || v.type.kind !== 'appointment') return redirect('/');
-  const maxDate = addDaysStr(todayStr(), BOOKING_WINDOW_DAYS);
-  const inWindow = !!date && date >= todayStr() && date <= maxDate;
   const open =
-    inWindow && (await getAvailableSlots(coach.id, date, v.duration_min)).some((s) => s.startAt === startAtParam);
+    dateOk && (await getAvailableSlots(v.type.coach_id, date, v.duration_min)).some((s) => s.startAt === startAtParam);
   if (!startAtParam || !open) return redirect(`/s/${v.type.id}?variant=${v.id}&date=${date || ''}&error=slot_taken`);
+  const coach = await getCoachProfile(v.type.coach_id);
   ctx = {
     kind: 'appointment',
+    coachId: v.type.coach_id,
+    coachName: coach?.name ?? 'your coach',
     typeId: v.type.id,
     typeName: v.type.name,
     variantId: v.id,
@@ -83,6 +91,35 @@ if (occId) {
     locationName: v.type.location?.name,
     locationAddress: v.type.location?.address,
     intakeFields: parseIntakeFields(v.type.intake_fields),
+  };
+} else if (groupSlug && groupDur) {
+  // "Any available coach" — resolve a coach + their matching variant for this slot.
+  const offering = await getOffering(groupSlug);
+  if (!offering || offering.kind !== 'appointment') return redirect('/');
+  const pool = offering.coaches.filter((c) => c.variants.some((v) => v.duration_min === groupDur));
+  const back = `/g/${groupSlug}?dur=${groupDur}&date=${date || ''}`;
+  const merged = dateOk ? await mergeAvailability(pool.map((c) => c.id), date, groupDur) : [];
+  const slot = merged.find((m) => m.startAt === startAtParam);
+  if (!startAtParam || !slot) return redirect(`${back}&error=slot_taken`);
+  const coachId = await pickCoach(slot.coachIds, startAtParam);
+  const picked = pool.find((c) => c.id === coachId)!;
+  const variant = picked.variants.find((v) => v.duration_min === groupDur)!;
+  const [coach, pickedType] = await Promise.all([getCoachProfile(coachId), getSessionTypeById(picked.typeId)]);
+  ctx = {
+    kind: 'appointment',
+    coachId,
+    coachName: coach?.name ?? 'your coach',
+    typeId: picked.typeId,
+    typeName: offering.name,
+    variantId: variant.id,
+    variantName: variant.name,
+    durationMin: variant.duration_min,
+    priceCents: variant.price_cents,
+    startAt: startAtParam,
+    endAt: new Date(new Date(startAtParam).getTime() + groupDur * 60_000).toISOString(),
+    locationName: offering.location?.name,
+    locationAddress: offering.location?.address,
+    intakeFields: parseIntakeFields(pickedType?.intake_fields),
   };
 } else {
   return redirect('/');
@@ -105,7 +142,7 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
   const { data, error: e } = await db
     .from('bookings')
     .insert({
-      coach_id: coach!.id,
+      coach_id: c.coachId,
       client_id: clientId,
       start_at: c.startAt,
       end_at: c.endAt,
@@ -140,7 +177,7 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
     await sendConfirmation({
       to,
       clientName: name,
-      coachName: coach!.name,
+      coachName: c.coachName,
       bookingId: data.id,
       startAt: c.startAt,
       endAt: c.endAt,
@@ -192,7 +229,11 @@ if (request.method === 'POST') {
   }
 }
 
-const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?variant=${ctx.variantId}&date=${date}`;
+const backHref = groupSlug
+  ? `/g/${groupSlug}?dur=${groupDur}&date=${date}`
+  : ctx.kind === 'class'
+    ? `/s/${ctx.typeId}`
+    : `/s/${ctx.typeId}?variant=${ctx.variantId}&date=${date}`;
 ---
 
 <Base title="Confirm your booking">
@@ -205,7 +246,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
     <p class="text-sm text-ink-soft">
       {ctx.typeName} ·
       {ctx.kind === 'appointment' ? ctx.variantName : `${ctx.durationMin} min`} ·
-      {coach.name} · {fmtPrice(ctx.priceCents)}
+      {ctx.coachName} · {fmtPrice(ctx.priceCents)}
     </p>
     {ctx.locationName && (
       <p class="mt-1 text-sm text-ink-soft">
@@ -321,7 +362,7 @@ const backHref = ctx.kind === 'class' ? `/s/${ctx.typeId}` : `/s/${ctx.typeId}?v
     }
 
     <label class="text-sm">
-      <span class="font-semibold">Notes for {coach.name}</span>
+      <span class="font-semibold">Notes for {ctx.coachName}</span>
       <span class="text-ink-soft"> — optional</span>
       <textarea
         name="notes"

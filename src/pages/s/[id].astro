@@ -1,19 +1,16 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { getPrimaryCoach } from '../../lib/coach';
-import { listSessionTypes, upcomingOccurrences } from '../../lib/sessions';
+import { getSessionTypeById, upcomingOccurrences } from '../../lib/sessions';
+import { listLocations } from '../../lib/locations';
 import { getAvailableSlots } from '../../lib/slots';
 import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt } from '../../lib/format';
 import { BOOKING_WINDOW_DAYS } from '../../lib/config';
 
 const { params, url } = Astro;
-const coach = await getPrimaryCoach();
-if (!coach) return Astro.redirect('/?error=unknown');
-
-const types = await listSessionTypes(coach.id, { activeOnly: true });
-const type = types.find((t) => t.id === params.id);
-if (!type || type.variants.length === 0) return Astro.redirect('/');
-const multiLoc = new Set(types.map((t) => t.location_id)).size > 1;
+const type = await getSessionTypeById(params.id!);
+if (!type || !type.active || !type.coach || type.variants.length === 0) return Astro.redirect('/');
+const coach = type.coach;
+const multiLoc = (await listLocations({ activeOnly: true })).length > 1;
 
 const errorCode = url.searchParams.get('error');
 const errors: Record<string, string> = {
@@ -62,8 +59,10 @@ const qs = (extra: Record<string, string>) =>
 <Base title={type.name}>
   <a href="/" class="text-sm text-ink-soft hover:text-ink">← All sessions</a>
   <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">{type.name}</h1>
+  <p class="mt-1 text-sm text-ink-soft">
+    with {coach.name}{multiLoc && type.location ? ` · ${type.location.name}` : ''}
+  </p>
   {type.blurb && <p class="mt-2 text-ink-soft">{type.blurb}</p>}
-  {multiLoc && type.location && <p class="mt-1 text-sm text-ink-soft">📍 {type.location.name}</p>}
 
   {errorCode && (
     <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{errors[errorCode] ?? 'Try again.'}</p>
