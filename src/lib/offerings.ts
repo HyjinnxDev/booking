@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from './supabase';
 import { upcomingOccurrences } from './sessions';
+import { getSettings } from './settings';
 import { slugify, assignOfferingSlugs } from './slug';
 
 export { slugify };
@@ -31,6 +32,10 @@ export interface Offering {
  */
 export async function listOfferings(): Promise<Offering[]> {
   const db = createSupabaseAdmin();
+  const settings = await getSettings();
+  // §5: bound the occurrence scan to the booking window instead of pulling every
+  // future row on every home / offering / embed page.
+  const windowEnd = new Date(Date.now() + settings.bookingWindowDays * 864e5);
   const [{ data: typeRows }, occ] = await Promise.all([
     db
       .from('session_types')
@@ -41,7 +46,7 @@ export async function listOfferings(): Promise<Offering[]> {
          session_variants ( id, name, duration_min, price_cents, active )`,
       )
       .eq('active', true),
-    upcomingOccurrences(),
+    upcomingOccurrences({ to: windowEnd }),
   ]);
 
   const classCountByType = new Map<string, number>();

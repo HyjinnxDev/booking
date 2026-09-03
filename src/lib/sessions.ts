@@ -116,6 +116,7 @@ export async function upcomingOccurrences(opts: {
   coachId?: string;
   variantId?: string;
   from?: Date;
+  to?: Date;
 } = {}): Promise<Occurrence[]> {
   const db = createSupabaseAdmin();
   let q = db
@@ -127,6 +128,7 @@ export async function upcomingOccurrences(opts: {
     .eq('status', 'scheduled')
     .gte('start_at', (opts.from ?? new Date()).toISOString())
     .order('start_at');
+  if (opts.to) q = q.lt('start_at', opts.to.toISOString());
   if (opts.coachId) q = q.eq('coach_id', opts.coachId);
   if (opts.variantId) q = q.eq('session_variant_id', opts.variantId);
 
