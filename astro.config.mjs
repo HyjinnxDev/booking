@@ -4,7 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   output: 'server',
-  adapter: vercel(),
+  // §5: bulk-email cron / class-series cancel can run long; lift the 10s default.
+  adapter: vercel({ maxDuration: 60 }),
   env: {
     schema: {
       PUBLIC_SUPABASE_URL: envField.string({ context: 'client', access: 'public' }),

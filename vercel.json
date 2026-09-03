@@ -1,9 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["syd1"],
-  "functions": {
-    "src/pages/api/**": { "maxDuration": 60 }
-  },
   "crons": [
     { "path": "/api/cron/reminders", "schedule": "30 22 * * *" },
     { "path": "/api/cron/topup", "schedule": "0 23 * * *" }
