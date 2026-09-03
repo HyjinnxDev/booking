@@ -20,6 +20,29 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
     return redirect(back);
   }
 
+  // §6: copy Monday's windows to Tue–Fri (skips days that already have any).
+  if (form.get('action') === 'copy_week') {
+    const { data: mon } = await supabase
+      .from('availability')
+      .select('start_time, end_time')
+      .eq('coach_id', targetCoach)
+      .eq('weekday', 1);
+    if (!mon || mon.length === 0) {
+      return redirect(`${back}${back.includes('?') ? '&' : '?'}error=${encodeURIComponent('Set Monday first.')}`);
+    }
+    const { data: existing } = await supabase
+      .from('availability')
+      .select('weekday')
+      .eq('coach_id', targetCoach)
+      .in('weekday', [2, 3, 4, 5]);
+    const has = new Set((existing ?? []).map((r) => r.weekday));
+    const rows = [2, 3, 4, 5]
+      .filter((wd) => !has.has(wd))
+      .flatMap((wd) => mon.map((m) => ({ coach_id: targetCoach, weekday: wd, start_time: m.start_time, end_time: m.end_time })));
+    if (rows.length) await supabase.from('availability').insert(rows);
+    return redirect(back);
+  }
+
   const weekday = Number(form.get('weekday'));
   const start = String(form.get('start_time') ?? '');
   const end = String(form.get('end_time') ?? '');

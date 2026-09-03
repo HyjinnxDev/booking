@@ -28,6 +28,7 @@ const dayCount = span === 'week' ? 7 : 1;
 const to = addDaysStr(from, dayCount);
 const rangeStart = fromZonedTime(`${from}T00:00:00`, BUSINESS_TZ).toISOString();
 const rangeEnd = fromZonedTime(`${to}T00:00:00`, BUSINESS_TZ).toISOString();
+const nowIso = new Date().toISOString();
 
 const flash = url.searchParams.get('cancelled')
   ? 'Booking cancelled — the client was emailed.'
@@ -37,7 +38,11 @@ const flash = url.searchParams.get('cancelled')
       ? 'Walk-in booked — confirmation sent.'
       : url.searchParams.get('walkin') === 'fail'
         ? "That time wasn't open. Pick another."
-        : '';
+        : url.searchParams.get('calrotated')
+          ? 'Calendar link reset — re-subscribe with the new URL below.'
+          : url.searchParams.get('updated')
+            ? 'Class updated.'
+            : '';
 
 const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promise.all([
   db
@@ -52,7 +57,12 @@ const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promi
     .lt('start_at', rangeEnd)
     .order('start_at'),
   upcomingOccurrences({ coachId, from: new Date(rangeStart) }),
-  db.from('blackout_dates').select('date, reason').eq('coach_id', coachId).gte('date', from).lt('date', to),
+  db
+    .from('time_off')
+    .select('start_at, end_at, reason')
+    .eq('coach_id', coachId)
+    .lt('start_at', rangeEnd)
+    .gt('end_at', rangeStart),
   db.from('profiles').select('cal_token').eq('id', coachId).single(),
 ]);
 
@@ -83,8 +93,16 @@ type Row =
 const rows: Row[] = [];
 for (const b of (apptRows ?? []) as any[]) rows.push({ at: b.start_at, day: localDay(b.start_at), kind: 'appt', b });
 for (const o of classOcc) rows.push({ at: o.start_at, day: localDay(o.start_at), kind: 'class', o });
-for (const bl of (blackouts ?? []) as any[])
-  rows.push({ at: `${bl.date}T00:00`, day: bl.date, kind: 'blackout', label: bl.reason ? `Closed — ${bl.reason}` : 'Closed all day' });
+for (const t of (blackouts ?? []) as any[]) {
+  const allDay = fmtTime(t.start_at) === '12:00am' && fmtTime(t.end_at) === '12:00am';
+  const when = allDay ? 'All day' : `${fmtTime(t.start_at)}–${fmtTime(t.end_at)}`;
+  rows.push({
+    at: t.start_at,
+    day: localDay(t.start_at),
+    kind: 'blackout',
+    label: `${when} · Time off${t.reason ? ` — ${t.reason}` : ''}`,
+  });
+}
 rows.sort((a, b) => a.at.localeCompare(b.at));
 
 const days = Array.from({ length: dayCount }, (_, i) => addDaysStr(from, i));
@@ -149,7 +167,6 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                 {list.map((r) =>
                   r.kind === 'blackout' ? (
                     <div class="flex items-center gap-3 px-4 py-2.5 text-sm text-ink-soft">
-                      <span class="tnum w-16 shrink-0">All day</span>
                       <span>{r.label}</span>
                     </div>
                   ) : r.kind === 'appt' ? (
@@ -194,7 +211,7 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                             </form>
                           )}
                           <a href={`/m/${r.b.id}`} class="btn btn-ghost btn-sm">Reschedule / cancel</a>
-                          {r.b.status === 'confirmed' && (
+                          {r.b.status === 'confirmed' && nowIso.localeCompare(r.at) >= 0 && (
                             <form method="POST" action={api} onsubmit="return confirm('Mark as a no-show?')">
                               <input type="hidden" name="action" value="booking.noshow" />
                               <input type="hidden" name="id" value={r.b.id} />
@@ -325,6 +342,10 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <code class="overflow-x-auto rounded-lg border border-line bg-white px-3 py-1.5 text-xs">{feedUrl}</code>
       <a href={feedUrl.replace(/^https?:/, 'webcal:')} class="btn btn-ghost btn-sm">Subscribe</a>
+      <form method="POST" action={api} onsubmit="return confirm('Reset the link? The current one stops working.')">
+        <input type="hidden" name="action" value="cal.rotate" />
+        <button class="btn btn-quiet btn-sm">Reset link</button>
+      </form>
     </div>
   </details>
 </Coach>

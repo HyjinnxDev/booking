@@ -6,7 +6,7 @@ import { getVariant, getOccurrence, getSessionTypeById } from '../lib/sessions';
 import { getOffering } from '../lib/offerings';
 import { createSupabaseAdmin } from '../lib/supabase';
 import { findOrCreateClient } from '../lib/accounts';
-import { sendConfirmation } from '../lib/email';
+import { sendConfirmation, sendCoachNotice } from '../lib/email';
 import { fmtLong, fmtPrice, todayStr, addDaysStr } from '../lib/format';
 import { getSettings } from '../lib/settings';
 import { parseIntakeFields, collectIntake, type IntakeField } from '../lib/intake';
@@ -27,6 +27,7 @@ interface BookCtx {
   kind: 'appointment' | 'class';
   coachId: string;
   coachName: string;
+  coachEmail: string;
   typeId: string;
   typeName: string;
   variantId: string;
@@ -57,6 +58,7 @@ if (occId) {
     kind: 'class',
     coachId: occ.type.coach_id,
     coachName: coach?.name ?? 'your coach',
+    coachEmail: coach?.email ?? '',
     typeId: occ.type.id,
     typeName: occ.type.name,
     variantId: occ.variant.id,
@@ -81,6 +83,7 @@ if (occId) {
     kind: 'appointment',
     coachId: v.type.coach_id,
     coachName: coach?.name ?? 'your coach',
+    coachEmail: coach?.email ?? '',
     typeId: v.type.id,
     typeName: v.type.name,
     variantId: v.id,
@@ -110,6 +113,7 @@ if (occId) {
     kind: 'appointment',
     coachId,
     coachName: coach?.name ?? 'your coach',
+    coachEmail: coach?.email ?? '',
     typeId: picked.typeId,
     typeName: offering.name,
     variantId: variant.id,
@@ -136,7 +140,7 @@ const myPasses = loggedIn
   ? (await activePassesForClient(locals.user!.id)).filter((p) => passCovers(p, ctx.typeId))
   : [];
 
-async function createBooking(clientId: string, to: string, name: string, tempPassword?: string) {
+async function createBooking(clientId: string, to: string, name: string, setPasswordUrl?: string) {
   const db = createSupabaseAdmin();
   const c = ctx!;
   const usePass = chosenPassId && myPasses.some((p) => p.id === chosenPassId);
@@ -164,7 +168,9 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
       error = "That pass couldn't be applied — go back and book without it.";
       return null;
     }
-    if (e.code === '23505') {
+    // 23505 = unique index (class seat / one-per-class); 23P01 = the coach
+    // no-overlap exclusion constraint (§2.2). Both mean "slot taken".
+    if (e.code === '23505' || e.code === '23P01') {
       error =
         c.kind === 'class'
           ? 'That class just filled up, or you already have a seat. Go back and pick another.'
@@ -172,6 +178,11 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
       return null;
     }
     throw e;
+  }
+
+  // §2.8: booking a seat leaves the waitlist for that occurrence.
+  if (c.occId) {
+    await db.from('waitlist').delete().eq('class_occurrence_id', c.occId).eq('client_id', clientId);
   }
 
   try {
@@ -183,13 +194,35 @@ async function createBooking(clientId: string, to: string, name: string, tempPas
       startAt: c.startAt,
       endAt: c.endAt,
       notes: values.notes || null,
-      newAccount: tempPassword ? { tempPassword } : undefined,
+      typeName: c.typeName,
+      locationName: c.locationName,
+      locationAddress: c.locationAddress,
+      newAccount: setPasswordUrl ? { setPasswordUrl } : undefined,
     });
   } catch (err) {
     console.error('confirmation email failed', err);
   }
 
-  return redirect(loggedIn ? '/bookings?booked=1' : `/booked?new=${tempPassword ? 1 : 0}`);
+  // §3.2: tell the coach.
+  if (c.coachEmail) {
+    try {
+      await sendCoachNotice({
+        to: c.coachEmail,
+        coachName: c.coachName,
+        kind: 'booked',
+        clientName: name,
+        startAt: c.startAt,
+        typeName: c.typeName,
+        bookingId: data.id,
+      });
+    } catch (err) {
+      console.error('coach notice failed', err);
+    }
+  }
+
+  return redirect(
+    loggedIn ? '/bookings?booked=1' : `/m/${data.id}?done=booked${setPasswordUrl ? '&new=1' : ''}`,
+  );
 }
 
 if (request.method === 'POST') {
@@ -202,7 +235,7 @@ if (request.method === 'POST') {
   };
 
   if (String(form.get('website') ?? '')) {
-    return redirect('/booked?new=0'); // silently drop bots (honeypot filled)
+    return redirect('/?booked=bot'); // silently drop bots (honeypot filled)
   }
 
   const intake = collectIntake(ctx.intakeFields, form);
@@ -210,7 +243,12 @@ if (request.method === 'POST') {
   chosenPassId = String(form.get('pass_id') ?? '');
   if (intake.error) error = intake.error;
   else if (loggedIn) {
-    const done = await createBooking(locals.user!.id, locals.user!.email!, values.name);
+    // §2.5: the name field isn't rendered for logged-in users — use the profile.
+    const done = await createBooking(
+      locals.user!.id,
+      locals.user!.email!,
+      locals.profile?.name || values.name,
+    );
     if (done) return done;
   } else if (!values.name || !EMAIL_RE.test(values.email)) {
     error = 'Please enter your name and a valid email address.';
@@ -221,7 +259,7 @@ if (request.method === 'POST') {
         name: values.name,
         phone: values.phone || null,
       });
-      const done = await createBooking(acct.id, values.email, values.name, acct.tempPassword);
+      const done = await createBooking(acct.id, values.email, values.name, acct.setPasswordUrl);
       if (done) return done;
     } catch (e) {
       console.error('guest booking failed', e);
@@ -251,13 +289,26 @@ const backHref = groupSlug
     </p>
     {ctx.locationName && (
       <p class="mt-1 text-sm text-ink-soft">
-        📍 {ctx.locationName}{ctx.locationAddress ? ` · ${ctx.locationAddress}` : ''}
+        📍 {ctx.locationName}
+        {ctx.locationAddress && (
+          <>
+            {' · '}
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(ctx.locationAddress)}`}
+              class="underline underline-offset-2 hover:text-ink"
+              target="_blank"
+              rel="noopener"
+            >
+              {ctx.locationAddress}
+            </a>
+          </>
+        )}
       </p>
     )}
     {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person — we'll mark it off.</p>}
   </div>
 
-  {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+  {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
 
   <form method="POST" class="mt-6 flex flex-col gap-4">
     <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
@@ -313,7 +364,12 @@ const backHref = groupSlug
       ctx.intakeFields.map((f) =>
         f.type === 'checkbox' ? (
           <label class="flex items-start gap-2 text-sm">
-            <input type="checkbox" name={`intake:${f.label}`} class="mt-0.5" />
+            <input
+              type="checkbox"
+              name={`intake:${f.label}`}
+              checked={intakeAnswers[f.label] === true}
+              class="mt-0.5"
+            />
             <span>
               {f.label}
               {f.required && <span class="text-red-500"> *</span>}
@@ -329,12 +385,14 @@ const backHref = groupSlug
                 rows="2"
                 maxlength="1000"
                 class="field mt-1"
+                set:text={String(intakeAnswers[f.label] ?? '')}
               />
             ) : (
               <input
                 type="text"
                 name={`intake:${f.label}`}
                 maxlength="1000"
+                value={String(intakeAnswers[f.label] ?? '')}
                 class="field mt-1"
               />
             )}

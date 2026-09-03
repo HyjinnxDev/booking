@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+import { getSettings } from '../lib/settings';
+const { brand } = await getSettings();
+---
+
+<Base title="Terms">
+  <h1 class="text-3xl font-extrabold">Terms of use</h1>
+  <div class="mt-4 max-w-prose space-y-3 text-sm text-ink-soft">
+    <p>
+      Bookings made through this site are a request for coaching time with {brand}. Payment is taken in
+      person unless stated otherwise.
+    </p>
+    <p>
+      You can reschedule or cancel a booking online up to the notice period shown at booking. Inside
+      that window, contact your coach directly.
+    </p>
+    <p>Missed sessions without notice may be charged in full.</p>
+    <p>Questions about these terms: reply to any booking email.</p>
+  </div>
+</Base>

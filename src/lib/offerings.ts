@@ -1,13 +1,9 @@
 import { createSupabaseAdmin } from './supabase';
 import { upcomingOccurrences } from './sessions';
+import { getSettings } from './settings';
+import { slugify, assignOfferingSlugs } from './slug';
 
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+export { slugify };
 
 export interface OfferingCoach {
   id: string;
@@ -36,6 +32,10 @@ export interface Offering {
  */
 export async function listOfferings(): Promise<Offering[]> {
   const db = createSupabaseAdmin();
+  const settings = await getSettings();
+  // §5: bound the occurrence scan to the booking window instead of pulling every
+  // future row on every home / offering / embed page.
+  const windowEnd = new Date(Date.now() + settings.bookingWindowDays * 864e5);
   const [{ data: typeRows }, occ] = await Promise.all([
     db
       .from('session_types')
@@ -46,7 +46,7 @@ export async function listOfferings(): Promise<Offering[]> {
          session_variants ( id, name, duration_min, price_cents, active )`,
       )
       .eq('active', true),
-    upcomingOccurrences(),
+    upcomingOccurrences({ to: windowEnd }),
   ]);
 
   const classCountByType = new Map<string, number>();
@@ -93,14 +93,7 @@ export async function listOfferings(): Promise<Offering[]> {
     g.durations.sort((a, b) => a - b);
     if (g.priceFromCents === Infinity) g.priceFromCents = 0;
   }
-  // Disambiguate slug collisions (same name, different location).
-  const seen = new Map<string, number>();
-  for (const g of out) {
-    const n = seen.get(g.slug) ?? 0;
-    if (n > 0) g.slug = `${g.slug}-${n + 1}`;
-    seen.set(g.slug.replace(/-\d+$/, ''), n + 1);
-  }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return assignOfferingSlugs(out);
 }
 
 export async function getOffering(slug: string): Promise<Offering | null> {

@@ -10,11 +10,12 @@ export interface Coach {
 /** A single coach's profile by id, or null. */
 export async function getCoachProfile(id: string): Promise<Coach | null> {
   const db = createSupabaseAdmin();
+  // §3.6: an admin can also coach.
   const { data } = await db
     .from('profiles')
     .select('id, name, email, cal_token')
     .eq('id', id)
-    .eq('role', 'coach')
+    .in('role', ['coach', 'admin'])
     .maybeSingle();
   return (data as Coach | null) ?? null;
 }

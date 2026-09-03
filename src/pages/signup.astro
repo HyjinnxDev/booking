@@ -1,9 +1,11 @@
 ---
 import Base from '../layouts/Base.astro';
 import { SITE_URL } from '../lib/config';
+import { safeNext } from '../lib/url';
 
 let error = '';
 let checkEmail = false;
+const next = safeNext(Astro.url.searchParams.get('next'), '/');
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -20,7 +22,7 @@ if (Astro.request.method === 'POST') {
       options: { data: { name }, emailRedirectTo: `${SITE_URL}/auth/callback` },
     });
     if (e) error = e.message;
-    else if (data.session) return Astro.redirect(Astro.url.searchParams.get('next') || '/');
+    else if (data.session) return Astro.redirect(next);
     else checkEmail = true;
   }
 }
@@ -34,7 +36,7 @@ if (Astro.request.method === 'POST') {
       session</a> and we'll set one up. This is for coaches and staff.
     </p>
 
-    {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+    {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
 
     {
       checkEmail ? (

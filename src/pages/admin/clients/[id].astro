@@ -1,0 +1,114 @@
+---
+import Admin from '../../../layouts/Admin.astro';
+import { createSupabaseAdmin } from '../../../lib/supabase';
+import { fmtLong, fmtPrice } from '../../../lib/format';
+
+// §3.4: one client's history, passes, contact details.
+const id = Astro.params.id!;
+const db = createSupabaseAdmin();
+
+const { data: client } = await db
+  .from('profiles')
+  .select('id, name, email, phone, created_at')
+  .eq('id', id)
+  .maybeSingle();
+if (!client) return Astro.redirect('/admin/clients');
+
+const [{ data: bookingRows }, { data: passRows }] = await Promise.all([
+  db
+    .from('bookings')
+    .select(
+      'id, start_at, status, price_cents, payment_status, class_occurrence_id, coach:coach_id ( name ), variant:session_variant_id ( name, session_types ( name ) )',
+    )
+    .eq('client_id', id)
+    .order('start_at', { ascending: false }),
+  db
+    .from('passes')
+    .select('id, name, total, used, status, expires_at')
+    .eq('client_id', id)
+    .order('created_at', { ascending: false }),
+]);
+
+const bookings = (bookingRows ?? []) as any[];
+const now = Date.now();
+const upcoming = bookings.filter((b) => new Date(b.start_at).getTime() > now && b.status === 'confirmed').reverse();
+const pastRows = bookings.filter((b) => !(new Date(b.start_at).getTime() > now && b.status === 'confirmed'));
+const noShows = bookings.filter((b) => b.status === 'no_show').length;
+const label = (b: any) =>
+  [b.variant?.session_types?.name ?? 'Session', b.coach?.name].filter(Boolean).join(' · ');
+---
+
+<Admin title={client.name || client.email}>
+  <a slot="actions" href="/admin/clients" class="btn btn-ghost btn-sm">← All clients</a>
+
+  <div class="card p-4 text-sm">
+    <p><span class="text-ink-soft">Email</span> · {client.email}</p>
+    {client.phone && <p><span class="text-ink-soft">Phone</span> · {client.phone}</p>}
+    <p><span class="text-ink-soft">Client since</span> · {fmtLong(client.created_at)}</p>
+    {noShows > 0 && <p class="text-ink-soft">{noShows} no-show{noShows === 1 ? '' : 's'}</p>}
+  </div>
+
+  {passRows && passRows.length > 0 && (
+    <>
+      <p class="eyebrow mt-8">Passes</p>
+      <div class="card rowlist mt-2 text-sm">
+        {passRows.map((p) => (
+          <div class="px-4 py-2">
+            <span class="font-semibold">{p.name}</span> · {p.total - p.used}/{p.total} left
+            {p.status === 'void' && <span class="text-ink-soft"> · void</span>}
+            {p.expires_at && <span class="text-ink-soft"> · expires {p.expires_at}</span>}
+          </div>
+        ))}
+      </div>
+    </>
+  )}
+
+  <p class="eyebrow mt-8">Upcoming ({upcoming.length})</p>
+  <div class="card rowlist mt-2 text-sm">
+    {upcoming.length === 0 ? (
+      <p class="px-4 py-2 text-ink-soft">Nothing booked.</p>
+    ) : (
+      upcoming.map((b) => (
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+          <span>
+            <span class="tnum font-semibold">{fmtLong(b.start_at)}</span>
+            <span class="text-ink-soft"> · {label(b)}</span>
+          </span>
+          <span class="flex items-center gap-2 text-ink-soft">
+            {fmtPrice(b.price_cents)}{b.payment_status === 'unpaid' ? ' · unpaid' : ''}
+            <a href={`/m/${b.id}`} class="btn btn-quiet btn-sm">manage</a>
+          </span>
+        </div>
+      ))
+    )}
+  </div>
+
+  <p class="eyebrow mt-8">History ({pastRows.length})</p>
+  <div class="card rowlist mt-2 text-sm">
+    {pastRows.length === 0 ? (
+      <p class="px-4 py-2 text-ink-soft">None.</p>
+    ) : (
+      pastRows.slice(0, 100).map((b) => (
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-ink-soft">
+          <span>
+            <span class="tnum">{fmtLong(b.start_at)}</span> · {label(b)}
+          </span>
+          <span>
+            {b.status === 'cancelled' ? 'cancelled' : b.status === 'no_show' ? 'no-show' : 'done'} ·{' '}
+            {fmtPrice(b.price_cents)}{b.payment_status === 'paid' ? ' paid' : b.payment_status === 'unpaid' ? ' unpaid' : ''}
+          </span>
+        </div>
+      ))
+    )}
+  </div>
+
+  <p class="mt-8 text-sm">
+    <a
+      href={`/coach?walk=1&wd=${new Date().toISOString().slice(0, 10)}`}
+      class="font-semibold text-ink underline underline-offset-2"
+    >
+      Book for this client
+    </a>{' '}
+    <span class="text-ink-soft">— opens the walk-in form (enter {client.email}).</span>
+  </p>
+</Admin>

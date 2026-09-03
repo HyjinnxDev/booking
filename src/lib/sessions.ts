@@ -116,6 +116,7 @@ export async function upcomingOccurrences(opts: {
   coachId?: string;
   variantId?: string;
   from?: Date;
+  to?: Date;
 } = {}): Promise<Occurrence[]> {
   const db = createSupabaseAdmin();
   let q = db
@@ -127,6 +128,7 @@ export async function upcomingOccurrences(opts: {
     .eq('status', 'scheduled')
     .gte('start_at', (opts.from ?? new Date()).toISOString())
     .order('start_at');
+  if (opts.to) q = q.lt('start_at', opts.to.toISOString());
   if (opts.coachId) q = q.eq('coach_id', opts.coachId);
   if (opts.variantId) q = q.eq('session_variant_id', opts.variantId);
 
@@ -193,6 +195,26 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
     variant: r.variant,
     type: r.variant.type,
   };
+}
+
+/**
+ * §2.1: the latest still-scheduled occurrence of each *live* series — one that
+ * still has an occurrence today or later. A series whose newest scheduled row is
+ * in the past was cancelled (series.cancel only touches future rows), so the
+ * top-up cron must not regenerate it.
+ */
+export function latestPerLiveSeries<T extends { series_id: string | null; start_at: string }>(
+  rows: T[],
+  now: Date = new Date(),
+): T[] {
+  const iso = now.toISOString();
+  const latest = new Map<string, T>();
+  for (const r of rows) {
+    if (!r.series_id || r.start_at < iso) continue;
+    const cur = latest.get(r.series_id);
+    if (!cur || r.start_at > cur.start_at) latest.set(r.series_id, r);
+  }
+  return [...latest.values()];
 }
 
 /**

@@ -12,14 +12,19 @@ const { user, profile, embed } = Astro.locals;
 const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
 const path = Astro.url.pathname;
 const { brand } = await getSettings();
+// Keep private / per-booking pages out of search results.
+const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/)/.test(path);
 ---
 
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="en-AU" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title ? `${title} · ${brand}` : brand}</title>
+    <meta name="description" content={`Book tennis coaching with ${brand} — 1:1 lessons and group classes.`} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Load fonts without blocking first paint; system-ui shows immediately, swaps in. -->
@@ -97,8 +102,10 @@ const { brand } = await getSettings();
 
     {!embed && (
     <footer class="border-t border-line">
-      <div class="mx-auto max-w-3xl px-5 py-5 text-xs text-ink-soft">
-        {brand} · tennis coaching, {new Date().getFullYear()}
+      <div class="mx-auto flex max-w-3xl flex-wrap gap-x-4 gap-y-1 px-5 py-5 text-xs text-ink-soft">
+        <span>{brand} · tennis coaching, {new Date().getFullYear()}</span>
+        <a href="/terms" class="hover:text-ink">Terms</a>
+        <a href="/privacy" class="hover:text-ink">Privacy</a>
       </div>
     </footer>
     )}
@@ -139,8 +146,15 @@ const { brand } = await getSettings();
           true,
         );
 
-        // Coming back via bfcache — clear any stale loading state.
-        addEventListener('pageshow', stop);
+        // Coming back via bfcache — clear any stale loading state, and re-enable
+        // buttons the submit handler disabled before the page was frozen.
+        addEventListener('pageshow', function () {
+          stop();
+          document.querySelectorAll('[aria-busy]').forEach(function (b) {
+            b.disabled = false;
+            b.removeAttribute('aria-busy');
+          });
+        });
         addEventListener('pagehide', stop);
       })();
     </script>

@@ -1,0 +1,47 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+
+// §3.4: find a client by name/email.
+const q = (Astro.url.searchParams.get('q') ?? '').trim();
+const db = createSupabaseAdmin();
+
+let clients: any[] = [];
+if (q) {
+  const like = `%${q.replace(/[%_]/g, (c) => '\\' + c)}%`;
+  const { data } = await db
+    .from('profiles')
+    .select('id, name, email, phone')
+    .eq('role', 'client')
+    .or(`name.ilike.${like},email.ilike.${like}`)
+    .order('name')
+    .limit(50);
+  clients = data ?? [];
+}
+---
+
+<Admin title="Clients" desc="Search by name or email to see someone's history, passes and contact details.">
+  <form method="GET" class="flex flex-wrap items-end gap-2">
+    <label class="text-sm">
+      <span class="mb-1 block text-ink-soft">Name or email</span>
+      <input name="q" value={q} autofocus class="field w-72" placeholder="jane, jane@…" />
+    </label>
+    <button class="btn">Search</button>
+  </form>
+
+  {q && (
+    <div class="card rowlist mt-6">
+      {clients.length === 0 ? (
+        <p class="px-4 py-3 text-sm text-ink-soft">No client matches “{q}”.</p>
+      ) : (
+        clients.map((c) => (
+          <a href={`/admin/clients/${c.id}`} class="flex flex-wrap items-center gap-x-3 px-4 py-2.5 text-sm hover:bg-paper">
+            <span class="font-semibold">{c.name || '(no name)'}</span>
+            <span class="text-ink-soft">{c.email}</span>
+            {c.phone && <span class="text-ink-soft">· {c.phone}</span>}
+          </a>
+        ))
+      )}
+    </div>
+  )}
+</Admin>

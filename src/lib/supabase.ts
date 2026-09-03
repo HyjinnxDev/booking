@@ -3,6 +3,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from 'astro:env/client';
 import { SUPABASE_SERVICE_ROLE_KEY } from 'astro:env/server';
 import type { AstroCookies } from 'astro';
+import type { Database } from './database.types';
+
+export type { Database };
 
 /** Request-scoped client bound to the user's auth cookies. Subject to RLS. */
 export function createSupabaseServer(ctx: { request: Request; cookies: AstroCookies }): SupabaseClient {
@@ -17,6 +20,13 @@ export function createSupabaseServer(ctx: { request: Request; cookies: AstroCook
       setAll(cookies) {
         cookies.forEach(({ name, value, options }) => ctx.cookies.set(name, value, options));
       },
+    },
+    // §1.6: the app makes zero client-side Supabase calls, so the session cookie
+    // has no reason to be script-readable.
+    cookieOptions: {
+      httpOnly: true,
+      secure: import.meta.env.PROD,
+      sameSite: 'lax',
     },
   });
 }

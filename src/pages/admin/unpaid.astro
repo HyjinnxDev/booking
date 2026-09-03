@@ -1,0 +1,81 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { fmtLong, fmtPrice, todayStr, addDaysStr } from '../../lib/format';
+
+// §3.5: past sessions the business still needs to collect on.
+const db = createSupabaseAdmin();
+const nowIso = new Date().toISOString();
+
+const { data: rows } = await db
+  .from('bookings')
+  .select(
+    'id, start_at, price_cents, status, coach:coach_id ( name ), client:client_id ( name, email, phone ), variant:session_variant_id ( session_types ( name ) )',
+  )
+  .eq('payment_status', 'unpaid')
+  .lt('start_at', nowIso)
+  .in('status', ['confirmed', 'no_show'])
+  .order('start_at', { ascending: false });
+
+const list = (rows ?? []) as any[];
+const byClient = new Map<string, { name: string; email: string; phone: string | null; items: any[]; total: number }>();
+for (const b of list) {
+  const key = b.client?.email ?? b.id;
+  const g =
+    byClient.get(key) ??
+    byClient.set(key, { name: b.client?.name ?? 'Client', email: b.client?.email ?? '', phone: b.client?.phone ?? null, items: [], total: 0 }).get(key)!;
+  g.items.push(b);
+  g.total += b.price_cents ?? 0;
+}
+const groups = [...byClient.values()].sort((a, b) => b.total - a.total);
+const grandTotal = groups.reduce((n, g) => n + g.total, 0);
+
+const from = addDaysStr(todayStr(), -90);
+const saved = Astro.url.searchParams.get('paid');
+---
+
+<Admin title="Unpaid" desc="Past sessions still marked unpaid — the ones to chase.">
+  <div slot="actions">
+    <a href={`/admin/export.csv?from=${from}&to=${todayStr()}`} class="btn btn-ghost btn-sm">Export 90 days (CSV)</a>
+  </div>
+
+  {saved && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Marked paid.</p>}
+
+  <p class="text-sm text-ink-soft">
+    {list.length} session{list.length === 1 ? '' : 's'} · <strong class="text-ink">{fmtPrice(grandTotal)}</strong> outstanding
+  </p>
+
+  <div class="mt-4 space-y-3">
+    {groups.map((g) => (
+      <div class="card p-4">
+        <p class="text-sm font-semibold">
+          {g.name}
+          <span class="ml-2 font-normal text-ink-soft">{g.email}{g.phone ? ` · ${g.phone}` : ''}</span>
+          <span class="ml-2 text-ink-soft">— {fmtPrice(g.total)}</span>
+        </p>
+        <div class="mt-2 space-y-1.5">
+          {g.items.map((b) => (
+            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>
+                <span class="tnum">{fmtLong(b.start_at)}</span>
+                <span class="text-ink-soft"> · {b.variant?.session_types?.name ?? 'Session'} · {b.coach?.name ?? ''}</span>
+                {b.status === 'no_show' && <span class="text-ink-soft"> · no-show</span>}
+              </span>
+              <span class="flex items-center gap-2">
+                {fmtPrice(b.price_cents)}
+                <form method="POST" action="/api/schedule">
+                  <input type="hidden" name="action" value="booking.pay" />
+                  <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="to" value="paid" />
+                  <input type="hidden" name="back" value="/admin/unpaid?paid=1" />
+                  <button class="btn btn-quiet btn-sm">Mark paid</button>
+                </form>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+    {groups.length === 0 && <p class="text-sm text-ink-soft">Nothing outstanding. 🎾</p>}
+  </div>
+</Admin>

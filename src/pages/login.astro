@@ -1,16 +1,19 @@
 ---
 import Base from '../layouts/Base.astro';
+import { safeNext } from '../lib/url';
 
 let error = '';
+const next = safeNext(Astro.url.searchParams.get('next'));
+const inactive = Astro.url.searchParams.get('inactive') === '1';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const { error: e } = await Astro.locals.supabase.auth.signInWithPassword({
-    email: String(form.get('email') ?? '').trim(),
+    email: String(form.get('email') ?? '').trim().toLowerCase(),
     password: String(form.get('password') ?? ''),
   });
   if (e) error = e.message;
-  else return Astro.redirect(Astro.url.searchParams.get('next') || '/bookings');
+  else return Astro.redirect(next);
 }
 ---
 
@@ -18,10 +21,16 @@ if (Astro.request.method === 'POST') {
   <div class="mx-auto max-w-sm">
     <h1 class="text-3xl font-extrabold">Sign in</h1>
     <p class="mt-2 text-sm text-ink-soft">
-      Booked as a guest? Use the temporary password from your confirmation email.
+      Booked as a guest? Set a password from the link in your confirmation email, or use
+      <a href="/forgot" class="font-semibold text-ink underline underline-offset-2">Forgot password</a> below.
     </p>
 
-    {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+    {inactive && (
+      <p class="mt-5 border-l-2 border-ink bg-white px-4 py-3 text-sm">
+        That coach account is deactivated. Contact an admin.
+      </p>
+    )}
+    {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
 
     <form method="POST" class="mt-6 flex flex-col gap-4">
       <label class="text-sm">
@@ -48,6 +57,10 @@ if (Astro.request.method === 'POST') {
         Sign in
       </button>
     </form>
+
+    <p class="mt-4 text-sm">
+      <a href="/forgot" class="font-semibold text-ink underline underline-offset-2">Forgot your password?</a>
+    </p>
 
     <p class="mt-6 text-sm text-ink-soft">
       No booking yet? <a href="/" class="font-semibold text-ink underline underline-offset-2">Book a session</a> — we'll set

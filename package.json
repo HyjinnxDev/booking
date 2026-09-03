@@ -3,6 +3,9 @@
   "type": "module",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.19"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -12,10 +15,10 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/vercel": "^11.0.8",
+    "@astrojs/vercel": "^11.0.10",
     "@supabase/ssr": "^0.12.5",
-    "@supabase/supabase-js": "^2.112.4",
-    "astro": "^7.2.9",
+    "@supabase/supabase-js": "^2.114.0",
+    "astro": "~7.2.10",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
     "resend": "^6.25.0"

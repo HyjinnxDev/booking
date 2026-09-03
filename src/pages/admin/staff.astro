@@ -2,9 +2,20 @@
 import Admin from '../../layouts/Admin.astro';
 import { listCoaches, staffLocationMap } from '../../lib/staff';
 import { listLocations } from '../../lib/locations';
+import { createSupabaseAdmin } from '../../lib/supabase';
 
 const { url } = Astro;
 const [coaches, locMap, locations] = await Promise.all([listCoaches(), staffLocationMap(), listLocations()]);
+
+// §3.12: how many upcoming bookings each coach still has (shown when deactivating).
+const db = createSupabaseAdmin();
+const { data: futureRows } = await db
+  .from('bookings')
+  .select('coach_id')
+  .eq('status', 'confirmed')
+  .gte('start_at', new Date().toISOString());
+const futureCount = new Map<string, number>();
+for (const r of futureRows ?? []) futureCount.set(r.coach_id, (futureCount.get(r.coach_id) ?? 0) + 1);
 
 const err = url.searchParams.get('error');
 const created = url.searchParams.get('created');
@@ -17,7 +28,7 @@ const manageTabs = [
 ---
 
 <Admin title="Staff" desc="Add coaches, set which locations they work at, and jump into any coach's setup.">
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
   {created && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Coach added — a sign-in email is on its way.</p>}
 
   <details class="card" open={!!err || coaches.length === 0}>
@@ -52,12 +63,19 @@ const manageTabs = [
     {
       coaches.map((c) => {
         const mine = locMap.get(c.id) ?? [];
+        const isAdmin = c.role === 'admin';
+        const future = futureCount.get(c.id) ?? 0;
         return (
           <details class="card group">
             <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm hover:bg-paper">
               <span class="font-semibold">{c.name || c.email}</span>
+              {isAdmin && <span class="rounded bg-ball/40 px-1.5 py-0.5 text-[11px] font-semibold uppercase">admin</span>}
               <span class="text-ink-soft">· {c.email}</span>
-              {!c.active && <span class="rounded bg-ink/5 px-1.5 py-0.5 text-[11px] font-semibold uppercase text-ink-soft">inactive</span>}
+              {!c.active && (
+                <span class="rounded bg-ink/5 px-1.5 py-0.5 text-[11px] font-semibold uppercase text-ink-soft">
+                  {isAdmin ? 'not coaching' : 'inactive'}
+                </span>
+              )}
               {locations.length > 1 && mine.length > 0 && (
                 <span class="text-ink-soft">· {mine.map((id) => locations.find((l) => l.id === id)?.name).filter(Boolean).join(', ')}</span>
               )}
@@ -94,10 +112,27 @@ const manageTabs = [
                 <input type="hidden" name="staff_id" value={c.id} />
                 <input type="hidden" name="to" value={(!c.active).toString()} />
                 <button class="btn btn-quiet btn-sm btn-danger">
-                  {c.active ? 'Deactivate coach' : 'Reactivate coach'}
+                  {isAdmin
+                    ? c.active
+                      ? 'Stop taking bookings'
+                      : 'I also coach — take bookings'
+                    : c.active
+                      ? 'Deactivate coach'
+                      : 'Reactivate coach'}
                 </button>
-                {c.active && <span class="ml-2 text-xs text-ink-soft">Hides them from booking; keeps their history.</span>}
+                {c.active && !isAdmin && (
+                  <span class="ml-2 text-xs text-ink-soft">Hides them from booking; keeps their history.</span>
+                )}
               </form>
+              {c.active && future > 0 && (
+                <p class="text-xs text-ink-soft">
+                  {future} upcoming booking{future === 1 ? '' : 's'} —{' '}
+                  <a href={`/admin?coach=${c.id}&span=week`} class="underline underline-offset-2 hover:text-ink">
+                    review the agenda
+                  </a>{' '}
+                  before deactivating; reassign or cancel each from there.
+                </p>
+              )}
             </div>
           </details>
         );
