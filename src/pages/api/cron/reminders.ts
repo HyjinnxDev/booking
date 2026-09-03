@@ -11,7 +11,8 @@ import { pool } from '../../../lib/pool';
 // end of *tomorrow* in business time, so an evening booking gets a full day's
 // notice instead of ~30 minutes. Idempotent via `reminded_at`.
 export const GET: APIRoute = async ({ request }) => {
-  if (request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
+  // §1.8: no secret configured => endpoint is closed, not open.
+  if (!CRON_SECRET || request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 

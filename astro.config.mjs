@@ -15,7 +15,10 @@ export default defineConfig({
       SUPABASE_SERVICE_ROLE_KEY: envField.string({ context: 'server', access: 'secret' }),
       RESEND_API_KEY: envField.string({ context: 'server', access: 'secret' }),
       EMAIL_FROM: envField.string({ context: 'server', access: 'secret', optional: true }),
-      CRON_SECRET: envField.string({ context: 'server', access: 'secret' }),
+      // Kept optional in the schema so a missing value doesn't fail the build in
+      // an environment that hasn't set it yet — the cron handlers hard-fail
+      // (401) when it's empty, so the endpoints are never actually open (§1.8).
+      CRON_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
   vite: {

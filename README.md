@@ -53,7 +53,7 @@ See `.env.example`. All required.
 | `SUPABASE_SERVICE_ROLE_KEY` | server | bypasses RLS; all booking/catalog writes go through it |
 | `RESEND_API_KEY` | server | Resend API key |
 | `EMAIL_FROM` | server | `TechniCourt <bookings@technicourt.com>` — domain verified in Resend |
-| `CRON_SECRET` | server + Vercel | required; Vercel Cron sends it as a Bearer token |
+| `CRON_SECRET` | server + Vercel | Vercel Cron sends it as a Bearer token. If unset, `/api/cron/*` return 401 (closed, not open). |
 
 ## Setup
 
