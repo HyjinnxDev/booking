@@ -14,15 +14,44 @@
   var accent = me.getAttribute('data-accent') || '#17181a';
   var src = origin + path + (path.indexOf('?') < 0 ? '?' : '&') + 'embed=1';
 
-  function makeFrame() {
+  if (!document.getElementById('tc-embed-style')) {
+    var st = document.createElement('style');
+    st.id = 'tc-embed-style';
+    st.textContent =
+      '@keyframes tc-spin{to{transform:rotate(1turn)}}' +
+      '.tc-embed{position:relative;min-height:140px}' +
+      '.tc-embed>iframe{opacity:0;transition:opacity .25s}' +
+      '.tc-embed.tc-ready>iframe{opacity:1}' +
+      '.tc-embed>.tc-spin{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}' +
+      '.tc-embed.tc-ready>.tc-spin{display:none}' +
+      '.tc-spin i{width:26px;height:26px;border-radius:50%;border:2px solid ' +
+      accent +
+      ';border-top-color:transparent;animation:tc-spin .7s linear infinite}';
+    document.head.appendChild(st);
+  }
+
+  function makeWidget() {
+    var box = document.createElement('div');
+    box.className = 'tc-embed';
+    if (mode === 'popup') box.style.height = '100%';
+
+    var spin = document.createElement('div');
+    spin.className = 'tc-spin';
+    spin.innerHTML = '<i></i>';
+
     var f = document.createElement('iframe');
     f.src = src;
     f.title = 'Booking';
-    f.loading = 'lazy';
     f.setAttribute('data-tc-frame', '');
     f.style.cssText = 'width:100%;border:0;display:block;background:transparent';
     f.style.height = mode === 'popup' ? '100%' : '640px'; // pre-resize guess
-    return f;
+    f.addEventListener('load', function () {
+      box.classList.add('tc-ready');
+    });
+
+    box.appendChild(spin);
+    box.appendChild(f);
+    return box;
   }
 
   // The framed page posts its height as it renders / as the user navigates.
@@ -47,7 +76,7 @@
       'width:min(560px,92vw);height:min(88vh,860px);padding:0;border:0;border-radius:.9rem;overflow:hidden;background:#fcfbf9';
 
     btn.addEventListener('click', function () {
-      if (!dlg.firstChild) dlg.appendChild(makeFrame());
+      if (!dlg.querySelector('iframe')) dlg.appendChild(makeWidget());
       dlg.showModal();
     });
     dlg.addEventListener('click', function (e) {
@@ -57,6 +86,6 @@
     me.parentNode.insertBefore(btn, me);
     document.body.appendChild(dlg);
   } else {
-    me.parentNode.insertBefore(makeFrame(), me);
+    me.parentNode.insertBefore(makeWidget(), me);
   }
 })();

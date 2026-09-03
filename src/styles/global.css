@@ -169,7 +169,49 @@ details[open] > summary.eyebrow::before {
   content: '– ';
 }
 
+/* ---------------------------------------------------------------------------
+   Interaction feedback. Press states so a tap registers before the next page
+   loads. In @layer components so an explicit utility transform still wins.
+   --------------------------------------------------------------------------- */
+a:active, button:not(:disabled):active, summary:active, [role='button']:active {
+  transform: scale(0.985);
+}
+
 } /* @layer components */
+
+/* Route-change progress bar + busy button — global, must beat utilities.
+   Base.astro's inline script toggles [data-loading] and aria-busy. */
+
+/* Navigation / form submit in progress. */
+html[data-loading] {
+  cursor: progress;
+}
+html[data-loading]::after {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 9999;
+  background: var(--color-ball);
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-loading]::after {
+    background: linear-gradient(90deg, transparent, var(--color-ball) 45%, var(--color-ball) 55%, transparent);
+    background-size: 45% 100%;
+    background-repeat: no-repeat;
+    animation: route-bar 0.9s linear infinite;
+  }
+}
+@keyframes route-bar {
+  from { background-position: -45% 0; }
+  to { background-position: 145% 0; }
+}
+
+/* Button mid-submit — the script sets aria-busy, then disables. */
+button[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

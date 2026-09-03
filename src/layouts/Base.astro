@@ -103,6 +103,48 @@ const { brand } = await getSettings();
     </footer>
     )}
 
+    <script is:inline>
+      (function () {
+        // Instant feedback: flag the page as loading on any real navigation or
+        // form submit, and mark the pressed submit button busy. CSS does the rest.
+        var root = document.documentElement;
+        var go = function () { root.setAttribute('data-loading', ''); };
+        var stop = function () { root.removeAttribute('data-loading'); };
+
+        addEventListener(
+          'click',
+          function (e) {
+            if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            var a = e.target.closest && e.target.closest('a[href]');
+            if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+            var u = new URL(a.href, location.href);
+            if (u.origin !== location.origin) return;
+            if (u.href.split('#')[0] === location.href.split('#')[0]) return; // same-page hash
+            go();
+          },
+          true,
+        );
+
+        addEventListener(
+          'submit',
+          function (e) {
+            if (e.defaultPrevented) return;
+            go();
+            var btn = e.submitter;
+            if (btn && btn.tagName === 'BUTTON' && !btn.disabled) {
+              btn.setAttribute('aria-busy', 'true');
+              setTimeout(function () { btn.disabled = true; }, 0); // after the value is submitted
+            }
+          },
+          true,
+        );
+
+        // Coming back via bfcache — clear any stale loading state.
+        addEventListener('pageshow', stop);
+        addEventListener('pagehide', stop);
+      })();
+    </script>
+
     {embed && (
       <script is:inline>
         (function () {
