@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { formatInTimeZone } from 'date-fns-tz';
 import { CRON_SECRET } from 'astro:env/server';
 import { createSupabaseAdmin } from '../../../lib/supabase';
-import { weeklySeries } from '../../../lib/sessions';
+import { weeklySeries, latestPerLiveSeries } from '../../../lib/sessions';
 import { BUSINESS_TZ } from '../../../lib/config';
 import { getSettings } from '../../../lib/settings';
 import { todayStr, addDaysStr } from '../../../lib/format';
@@ -20,21 +20,21 @@ export const GET: APIRoute = async ({ request }) => {
   const db = createSupabaseAdmin();
   const targetDate = addDaysStr(todayStr(), (await getSettings()).seriesWeeks * 7);
 
+  // §2.1: only look at occurrences from today on. A series whose last scheduled
+  // occurrence is in the past was cancelled (series.cancel only touches future
+  // rows) — without this filter the cron regenerates it from that old date.
   const { data: rows, error } = await db
     .from('class_occurrences')
     .select('series_id, session_variant_id, coach_id, capacity, start_at, end_at')
     .eq('status', 'scheduled')
     .not('series_id', 'is', null)
+    .gte('start_at', new Date().toISOString())
     .order('start_at', { ascending: false });
 
   if (error) return json({ error: error.message }, 500);
 
-  // Latest scheduled occurrence per series.
-  const latest = new Map<string, (typeof rows)[number]>();
-  for (const r of rows ?? []) if (!latest.has(r.series_id!)) latest.set(r.series_id!, r);
-
   let added = 0;
-  for (const r of latest.values()) {
+  for (const r of latestPerLiveSeries(rows ?? [])) {
     const latestDate = formatInTimeZone(r.start_at, BUSINESS_TZ, 'yyyy-MM-dd');
     const time = formatInTimeZone(r.start_at, BUSINESS_TZ, 'HH:mm');
     const durationMin = Math.round((new Date(r.end_at).getTime() - new Date(r.start_at).getTime()) / 60_000);
@@ -61,7 +61,7 @@ export const GET: APIRoute = async ({ request }) => {
     added += newRows.length;
   }
 
-  return json({ series: latest.size, added });
+  return json({ added });
 };
 
 function json(body: unknown, status = 200) {

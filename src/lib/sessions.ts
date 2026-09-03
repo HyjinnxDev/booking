@@ -196,6 +196,26 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
 }
 
 /**
+ * §2.1: the latest still-scheduled occurrence of each *live* series — one that
+ * still has an occurrence today or later. A series whose newest scheduled row is
+ * in the past was cancelled (series.cancel only touches future rows), so the
+ * top-up cron must not regenerate it.
+ */
+export function latestPerLiveSeries<T extends { series_id: string | null; start_at: string }>(
+  rows: T[],
+  now: Date = new Date(),
+): T[] {
+  const iso = now.toISOString();
+  const latest = new Map<string, T>();
+  for (const r of rows) {
+    if (!r.series_id || r.start_at < iso) continue;
+    const cur = latest.get(r.series_id);
+    if (!cur || r.start_at > cur.start_at) latest.set(r.series_id, r);
+  }
+  return [...latest.values()];
+}
+
+/**
  * UTC [start, end] instants for a class repeating weekly on the same local
  * wall time. Generated from the local date so a 6pm class stays 6pm across DST.
  */

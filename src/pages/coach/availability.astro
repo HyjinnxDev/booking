@@ -2,17 +2,20 @@
 import Coach from '../../layouts/Coach.astro';
 import { getSettings } from '../../lib/settings';
 import { getStaffScope } from '../../lib/staff';
+import { fmtLong, todayStr } from '../../lib/format';
+import { formatInTimeZone } from 'date-fns-tz';
+import { BUSINESS_TZ } from '../../lib/config';
 
 const { locals, url } = Astro;
 const scope = await getStaffScope(Astro);
 if (scope.needsPick) return Astro.redirect('/admin/staff');
 const coachId = scope.coachId!;
 const apiA = scope.isSelf ? '/api/availability' : `/api/availability?coach=${coachId}`;
-const apiB = scope.isSelf ? '/api/blackouts' : `/api/blackouts?coach=${coachId}`;
+const apiB = scope.isSelf ? '/api/timeoff' : `/api/timeoff?coach=${coachId}`;
 const stepMin = (await getSettings()).slotStepMin;
-const todayIso = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
-const [{ data: rules }, { data: blackouts }] = await Promise.all([
+const [{ data: rules }, { data: timeOff }] = await Promise.all([
   locals.supabase
     .from('availability')
     .select('id, weekday, start_time, end_time')
@@ -20,17 +23,26 @@ const [{ data: rules }, { data: blackouts }] = await Promise.all([
     .order('weekday')
     .order('start_time'),
   locals.supabase
-    .from('blackout_dates')
-    .select('id, date, reason')
+    .from('time_off')
+    .select('id, start_at, end_at, reason')
     .eq('coach_id', coachId)
-    .gte('date', todayIso)
-    .order('date'),
+    .gte('end_at', new Date().toISOString())
+    .order('start_at'),
 ]);
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const err = url.searchParams.get('error');
 const byDay = (wd: number) => (rules ?? []).filter((r) => r.weekday === wd);
 const hhmm = (t: string) => t.slice(0, 5);
+
+// Whole business-local day? -> show "all day", else a time range.
+const isAllDay = (s: string, e: string) =>
+  formatInTimeZone(s, BUSINESS_TZ, 'HH:mm') === '00:00' &&
+  formatInTimeZone(e, BUSINESS_TZ, 'HH:mm') === '00:00';
+const offLabel = (o: { start_at: string; end_at: string }) =>
+  isAllDay(o.start_at, o.end_at)
+    ? `${formatInTimeZone(o.start_at, BUSINESS_TZ, 'EEE d MMM')} — all day`
+    : `${fmtLong(o.start_at)} → ${formatInTimeZone(o.end_at, BUSINESS_TZ, 'h:mmaaa')}`;
 ---
 
 <Coach
@@ -79,32 +91,62 @@ const hhmm = (t: string) => t.slice(0, 5);
     <button class="btn btn-ghost">Add hours</button>
   </form>
 
-  <p class="eyebrow mt-8">Blackout dates</p>
-  <p class="mt-1 text-sm text-ink-soft">Whole days closed — holidays, travel.</p>
+  <p class="eyebrow mt-8">Time off</p>
+  <p class="mt-1 text-sm text-ink-soft">Closed periods — a whole day, or a couple of hours for an appointment.</p>
 
   <div class="card rowlist mt-2">
     {
-      (blackouts ?? []).map((b) => (
+      (timeOff ?? []).map((o) => (
         <div class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
           <span class="tnum">
-            {b.date}
-            {b.reason && <span class="text-ink-soft"> — {b.reason}</span>}
+            {offLabel(o)}
+            {o.reason && <span class="text-ink-soft"> — {o.reason}</span>}
           </span>
           <form method="POST" action={apiB}>
             <input type="hidden" name="action" value="delete" />
-            <input type="hidden" name="id" value={b.id} />
+            <input type="hidden" name="id" value={o.id} />
             <button class="btn btn-quiet btn-sm">Remove</button>
           </form>
         </div>
       ))
     }
-    {(blackouts ?? []).length === 0 && <div class="px-4 py-2 text-sm text-ink-soft">None.</div>}
+    {(timeOff ?? []).length === 0 && <div class="px-4 py-2 text-sm text-ink-soft">None.</div>}
   </div>
 
-  <form method="POST" action={apiB} class="mt-3 flex flex-wrap items-center gap-2">
-    <input type="date" name="date" required min={todayIso} class="field w-40" />
+  <form method="POST" action={apiB} class="eb-timeoff mt-3 flex flex-wrap items-end gap-2" data-timeoff>
+    <label class="flex items-center gap-1.5 py-2 text-sm text-ink-soft">
+      <input type="checkbox" name="all_day" data-toggle checked /> All day
+    </label>
+    <label class="text-sm" data-when="all_day">
+      <span class="mb-1 block text-ink-soft">Date</span>
+      <input type="date" name="date" min={today} class="field w-40" />
+    </label>
+    <label class="text-sm" data-when="range" hidden>
+      <span class="mb-1 block text-ink-soft">From</span>
+      <input type="datetime-local" name="start_at" step="900" class="field w-52" />
+    </label>
+    <label class="text-sm" data-when="range" hidden>
+      <span class="mb-1 block text-ink-soft">To</span>
+      <input type="datetime-local" name="end_at" step="900" class="field w-52" />
+    </label>
     <input type="text" name="reason" placeholder="Reason (optional)" maxlength="120" class="field grow" />
-    <button class="btn btn-ghost">Add blackout</button>
+    <button class="btn btn-ghost">Add time off</button>
   </form>
+
+  <script is:inline>
+    for (const f of document.querySelectorAll('[data-timeoff]')) {
+      const toggle = f.querySelector('[data-toggle]');
+      const sync = () => {
+        const allDay = toggle.checked;
+        f.querySelectorAll('[data-when]').forEach((el) => {
+          const on = el.dataset.when === (allDay ? 'all_day' : 'range');
+          el.hidden = !on;
+          el.querySelectorAll('input').forEach((i) => (i.disabled = !on));
+        });
+      };
+      toggle.addEventListener('change', sync);
+      sync();
+    }
+  </script>
 </Coach>
 

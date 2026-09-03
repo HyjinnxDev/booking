@@ -94,7 +94,10 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
     }
 
     case 'type.delete': {
-      await supabase.from('session_types').delete().eq('id', s('id'));
+      // §2.13: FK from bookings.session_variant_id blocks the delete when there's
+      // history. Surface it instead of silently doing nothing.
+      const { error } = await supabase.from('session_types').delete().eq('id', s('id'));
+      if (error) return fail('This has bookings on it — untick “Visible to clients” instead of deleting.');
       return redirect(BACK);
     }
 
@@ -137,7 +140,8 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
     }
 
     case 'variant.delete': {
-      await supabase.from('session_variants').delete().eq('id', s('id'));
+      const { error } = await supabase.from('session_variants').delete().eq('id', s('id'));
+      if (error) return fail('This option has bookings on it — set its price/duration to retire it, not delete.');
       return redirect(BACK);
     }
 

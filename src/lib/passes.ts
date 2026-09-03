@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from './supabase';
+import { todayStr } from './format';
 
 export interface Pass {
   id: string;
@@ -17,7 +18,7 @@ const COLS = 'id, client_id, session_type_id, name, total, used, price_cents, st
 /** Passes a client can still redeem — active, credit left, not expired. */
 export async function activePassesForClient(clientId: string): Promise<Pass[]> {
   const db = createSupabaseAdmin();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr(); // §2.10: business-local date, not UTC
   const { data } = await db
     .from('passes')
     .select(COLS)

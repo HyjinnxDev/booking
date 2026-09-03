@@ -20,8 +20,9 @@ const errors: Record<string, string> = {
 };
 
 // ---- appointment state ----
+const settings = await getSettings();
 const today = todayStr();
-const maxDate = addDaysStr(today, (await getSettings()).bookingWindowDays);
+const maxDate = addDaysStr(today, settings.bookingWindowDays);
 let date = url.searchParams.get('date') || today;
 if (date < today) date = today;
 if (date > maxDate) date = maxDate;
@@ -39,7 +40,14 @@ const rail = Array.from({ length: 7 }, (_, i) => {
 });
 
 // ---- class state ----
-const occ = type.kind === 'class' ? await upcomingOccurrences({ variantId: variant.id }) : [];
+// §2.11: hide occurrences starting inside the notice window — /book bounces them.
+const occ =
+  type.kind === 'class'
+    ? await upcomingOccurrences({
+        variantId: variant.id,
+        from: new Date(Date.now() + settings.minNoticeMin * 60_000),
+      })
+    : [];
 
 const myWait = new Set<string>();
 if (Astro.locals.user && occ.length > 0) {
@@ -186,10 +194,16 @@ const qs = (extra: Record<string, string>) =>
                       <button class="rounded-lg border border-line px-3 py-2 text-sm hover:border-ink">Leave</button>
                     </form>
                   ) : (
-                    <form method="POST" action="/api/waitlist">
+                    <form method="POST" action="/api/waitlist" class="flex flex-wrap items-center gap-1.5">
                       <input type="hidden" name="action" value="join" />
                       <input type="hidden" name="occ" value={o.id} />
                       <input type="hidden" name="type" value={type.id} />
+                      {!Astro.locals.user && (
+                        <>
+                          <input name="name" required placeholder="Name" class="field w-28" />
+                          <input name="email" type="email" required placeholder="Email" class="field w-40" />
+                        </>
+                      )}
                       <button class="rounded-lg border border-ink px-4 py-2 text-sm font-semibold hover:bg-ink hover:text-paper">
                         Join waitlist
                       </button>

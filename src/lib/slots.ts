@@ -1,5 +1,6 @@
 import { fromZonedTime } from 'date-fns-tz';
 import { SLOT_STEP_MIN, BUSINESS_TZ, MIN_NOTICE_MIN } from './config';
+import { localDay } from './format';
 
 export interface AvailabilityRule {
   weekday: number; // 0 = Sunday .. 6 = Saturday
@@ -107,7 +108,7 @@ export async function getAvailableSlots(
   const winStart = new Date(dayStart.getTime() - 12 * 3600_000); // catch a class that started before midnight
   const winEnd = new Date(dayStart.getTime() + 36 * 3600_000);
 
-  const [rules, bookings, classes, blackout] = await Promise.all([
+  const [rules, bookings, classes, timeOff] = await Promise.all([
     db.from('availability').select('weekday, start_time, end_time').eq('coach_id', coachId),
     db
       .from('bookings')
@@ -123,12 +124,19 @@ export async function getAvailableSlots(
       .eq('status', 'scheduled')
       .gte('start_at', winStart.toISOString())
       .lt('start_at', winEnd.toISOString()),
-    db.from('blackout_dates').select('id').eq('coach_id', coachId).eq('date', dateStr),
+    // §3.3: time_off is an arbitrary interval — a whole day or a lunch hour.
+    db
+      .from('time_off')
+      .select('start_at, end_at')
+      .eq('coach_id', coachId)
+      .lt('start_at', winEnd.toISOString())
+      .gt('end_at', winStart.toISOString()),
   ]);
 
   const busy: BusyRange[] = [
     ...(bookings.data ?? []).map((b) => ({ start: b.start_at as string, end: b.end_at as string })),
     ...(classes.data ?? []).map((c) => ({ start: c.start_at as string, end: c.end_at as string })),
+    ...(timeOff.data ?? []).map((t) => ({ start: t.start_at as string, end: t.end_at as string })),
   ];
 
   return computeSlots({
@@ -139,7 +147,7 @@ export async function getAvailableSlots(
     noticeMin: settings.minNoticeMin,
     rules: rules.data ?? [],
     busy,
-    isBlackout: (blackout.data ?? []).length > 0,
+    isBlackout: false,
   });
 }
 
@@ -175,7 +183,11 @@ export async function pickCoach(coachIds: string[], startAt: string): Promise<st
   if (coachIds.length === 1) return coachIds[0];
   const { createSupabaseAdmin } = await import('./supabase');
   const db = createSupabaseAdmin();
-  const day = startAt.slice(0, 10);
+  // §2.10: "that day's load" must be the business-local day, not the UTC one.
+  const day = localDay(startAt);
+  const dayStart = fromZonedTime(`${day}T00:00:00`, BUSINESS_TZ).toISOString();
+  const dayEnd = fromZonedTime(`${day}T00:00:00`, BUSINESS_TZ);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
   const counts = await Promise.all(
     coachIds.map(async (id) => {
       const { count } = await db
@@ -183,8 +195,8 @@ export async function pickCoach(coachIds: string[], startAt: string): Promise<st
         .select('id', { count: 'exact', head: true })
         .eq('coach_id', id)
         .eq('status', 'confirmed')
-        .gte('start_at', `${day}T00:00:00Z`)
-        .lte('start_at', `${day}T23:59:59Z`);
+        .gte('start_at', dayStart)
+        .lt('start_at', dayEnd.toISOString());
       return { id, count: count ?? 0 };
     }),
   );
