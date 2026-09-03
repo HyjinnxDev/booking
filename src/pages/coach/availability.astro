@@ -50,7 +50,7 @@ const offLabel = (o: { start_at: string; end_at: string }) =>
   desc={`Business timezone. Appointment start times step every ${stepMin} minutes inside these windows; each session's length is set on the Sessions tab.`}
   editingCoach={scope.isSelf ? undefined : scope.coachName}
 >
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
 
   <div class="card rowlist">
     {
@@ -82,13 +82,19 @@ const offLabel = (o: { start_at: string; end_at: string }) =>
     </label>
     <label class="text-sm">
       <span class="mb-1 block text-ink-soft">From</span>
-      <input type="time" name="start_time" required value="09:00" class="field w-28" />
+      <input type="time" name="start_time" required value="09:00" step="900" class="field w-28" />
     </label>
     <label class="text-sm">
       <span class="mb-1 block text-ink-soft">To</span>
-      <input type="time" name="end_time" required value="17:00" class="field w-28" />
+      <input type="time" name="end_time" required value="17:00" step="900" class="field w-28" />
     </label>
     <button class="btn btn-ghost">Add hours</button>
+  </form>
+
+  <form method="POST" action={apiA} class="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+    <input type="hidden" name="action" value="copy_week" />
+    <span>Same hours Mon–Fri?</span>
+    <button class="btn btn-quiet btn-sm">Copy Monday to Tue–Fri</button>
   </form>
 
   <p class="eyebrow mt-8">Time off</p>

@@ -28,7 +28,7 @@ const manageTabs = [
 ---
 
 <Admin title="Staff" desc="Add coaches, set which locations they work at, and jump into any coach's setup.">
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
   {created && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Coach added — a sign-in email is on its way.</p>}
 
   <details class="card" open={!!err || coaches.length === 0}>

@@ -73,7 +73,7 @@ const qs = (extra: Record<string, string>) =>
   {type.blurb && <p class="mt-2 text-ink-soft">{type.blurb}</p>}
 
   {errorCode && (
-    <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{errors[errorCode] ?? 'Try again.'}</p>
+    <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{errors[errorCode] ?? 'Try again.'}</p>
   )}
   {waitlistFlash === 'on' && (
     <p class="mt-5 border-l-2 border-ball bg-white px-4 py-3 text-sm">
@@ -132,6 +132,7 @@ const qs = (extra: Record<string, string>) =>
                   r.isSelected && 'bg-ink! text-paper hover:bg-ink!',
                 ]}
                 aria-current={r.isSelected ? 'date' : undefined}
+                aria-label={calFmt(r.date, 'EEEE d MMMM')}
               >
                 <span class="text-[11px] font-semibold uppercase tracking-wide opacity-70">{r.dow}</span>
                 <span class="tnum font-display text-lg font-bold">{r.day}</span>
@@ -163,7 +164,7 @@ const qs = (extra: Record<string, string>) =>
       </>
     ) : (
       <>
-        <p class="mt-6 text-sm font-semibold">{variant.duration_min} min · {fmtPrice(variant.price_cents)} · {variant.capacity} seats</p>
+        <p class="mt-6 text-sm font-semibold">{variant.duration_min} min · {fmtPrice(variant.price_cents)}</p>
         {occ.length === 0 ? (
           <p class="mt-8 border border-dashed border-line bg-white px-4 py-6 text-center text-sm text-ink-soft">
             No sessions scheduled right now. Check back soon.

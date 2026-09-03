@@ -31,7 +31,7 @@ const issued = url.searchParams.get('issued');
   title="Passes"
   desc="Sell a bundle of sessions in person, then issue it here. The client picks it at checkout and the balance ticks down. Cancelling a covered booking returns the credit."
 >
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
   {issued && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Pass issued.</p>}
 
   <details class="card" open={!!err || active.length === 0}>

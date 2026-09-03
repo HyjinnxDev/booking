@@ -289,13 +289,26 @@ const backHref = groupSlug
     </p>
     {ctx.locationName && (
       <p class="mt-1 text-sm text-ink-soft">
-        📍 {ctx.locationName}{ctx.locationAddress ? ` · ${ctx.locationAddress}` : ''}
+        📍 {ctx.locationName}
+        {ctx.locationAddress && (
+          <>
+            {' · '}
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(ctx.locationAddress)}`}
+              class="underline underline-offset-2 hover:text-ink"
+              target="_blank"
+              rel="noopener"
+            >
+              {ctx.locationAddress}
+            </a>
+          </>
+        )}
       </p>
     )}
     {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person — we'll mark it off.</p>}
   </div>
 
-  {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm">{error}</p>}
+  {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
 
   <form method="POST" class="mt-6 flex flex-col gap-4">
     <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />

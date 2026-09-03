@@ -1,0 +1,24 @@
+---
+import Base from '../layouts/Base.astro';
+import { getSettings } from '../lib/settings';
+const { brand } = await getSettings();
+---
+
+<Base title="Privacy">
+  <h1 class="text-3xl font-extrabold">Privacy</h1>
+  <div class="mt-4 max-w-prose space-y-3 text-sm text-ink-soft">
+    <p>
+      {brand} collects only what's needed to run your bookings: your name, email, phone (if you give
+      it), and the sessions you book, along with any notes or intake answers you add.
+    </p>
+    <p>
+      This is used to confirm bookings, send reminders, and let your coach prepare. It is not sold or
+      shared for marketing.
+    </p>
+    <p>
+      Email is sent via Resend and data is stored with Supabase, both acting as processors on our
+      behalf.
+    </p>
+    <p>To see or delete your data, reply to any booking email.</p>
+  </div>
+</Base>

@@ -38,7 +38,11 @@ const flash = url.searchParams.get('cancelled')
       ? 'Walk-in booked — confirmation sent.'
       : url.searchParams.get('walkin') === 'fail'
         ? "That time wasn't open. Pick another."
-        : '';
+        : url.searchParams.get('calrotated')
+          ? 'Calendar link reset — re-subscribe with the new URL below.'
+          : url.searchParams.get('updated')
+            ? 'Class updated.'
+            : '';
 
 const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promise.all([
   db
@@ -338,6 +342,10 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <code class="overflow-x-auto rounded-lg border border-line bg-white px-3 py-1.5 text-xs">{feedUrl}</code>
       <a href={feedUrl.replace(/^https?:/, 'webcal:')} class="btn btn-ghost btn-sm">Subscribe</a>
+      <form method="POST" action={api} onsubmit="return confirm('Reset the link? The current one stops working.')">
+        <input type="hidden" name="action" value="cal.rotate" />
+        <button class="btn btn-quiet btn-sm">Reset link</button>
+      </form>
     </div>
   </details>
 </Coach>

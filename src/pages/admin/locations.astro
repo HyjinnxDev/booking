@@ -11,7 +11,7 @@ const err = url.searchParams.get('error');
   title="Locations"
   desc="Venues where sessions run. Assign coaches to locations on the Staff tab; a coach assigns each session to one of their locations. Slot times use the business timezone — per-location timezones aren't live yet."
 >
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
 
   <div class="space-y-2">
     {

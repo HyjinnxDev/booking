@@ -1,290 +1,56 @@
 # TechniCourt Bookings — Roadmap
 
-Ranked most-needed → least. We work top-down. Check items off in place.
+One ranked list. Work top-down. `[ ]` todo · `[~]` partial · `[x]` done.
 
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done · **WL** = only matters for white-label resale
+## Next
 
----
+1. [ ] **Stripe / online payment** — deferred by request. Biggest single gap:
+   pay at booking, auto mark-paid, refund on cancel. Touches `book.astro`,
+   `/m/[id]`, `passes`, the pay flows in `/api/schedule`.
+2. [ ] **Occurrence edit — notify attendees** — `occ.update` currently refuses a
+   time change when a class has bookings. Add a "move + email everyone" path
+   reusing `sendReschedule` per attendee.
+3. [ ] **Per-location timezone** — `locations.timezone` is stored but slot
+   generation still uses the single `PUBLIC_BUSINESS_TZ`. Thread it through
+   `getAvailableSlots` / `weeklySeries` / display when a second zone exists.
+4. [ ] **Courts / resources** — `resources` table + exclusion constraints exist
+   (migration 0008) but nothing assigns `resource_id` and slots don't treat
+   "every court busy" as closed. Do it with, not before, real parallel demand.
+5. [ ] **Generated DB types everywhere** — `src/lib/database.types.ts` exists;
+   switch `createSupabaseAdmin()` to `SupabaseClient<Database>` and delete the
+   `any` casts, file by file, next schema round.
+6. [ ] **RLS duplicate-permissive-policy merge** — the other half of review
+   §4.10 (initplan half shipped in migration 0017). Perf-only; wait until a
+   table has real row counts.
+7. [ ] **Asymmetric JWT + `getClaims()`** — verify locally, read `role` from
+   `app_metadata`, drop the middleware profile query on public pages.
+8. [ ] **SMS reminders**, **memberships**, **reviews**, **RRULE**,
+   **multi-tenant RLS switch-on** — not needed for one club; don't start ahead
+   of 1–4.
 
-## → Round 1 (done — see git log on `feature/platform-buildout`)
+## Ops / one-offs
 
-Stripe/online payments deferred by request — still parked in Tier 0.
+- [ ] Vercel Preview env: set `PUBLIC_SUPABASE_*` if branch previews are wanted.
+- [ ] Resend: move Auth → SMTP to Resend (avoids 2/hr Supabase limit).
+- [ ] `.env` production `EMAIL_FROM` → `bookings@technicourt.com`, SPF/DKIM.
+- [ ] Turn on Supabase "Leaked password protection".
+- [ ] Fill in real `/terms` and `/privacy` copy.
+- [ ] `btree_gist` still in `public` schema — move to `extensions` on a branch,
+  insert-test the exclusion constraints, then merge (advisor `0014`).
+- [ ] `astro` pinned to `~7.2.10` — `7.3.0` has a broken internal import
+  (`_internal/logger`) that fails the build under rolldown. Revisit on 7.3.1+.
 
-1. [x] **`org_id` seam** — migration `0005`. Zero behaviour change.
-2. [~] **Vercel deploy green** — region pinned to `syd1`, second cron registered.
-   **BLOCKED:** env vars must be set in the Vercel dashboard (no MCP/API path). See flags below.
-3. [x] **Reschedule flow** — migration `0006` adds `ics_sequence`, emails an `.ics`
-   UPDATE. (Round 2 folded the page into `/m/<id>`.)
-4. [x] **Class cancellation → notify** — `occ.cancel` / `series.cancel` now email every
-   confirmed attendee (best-effort). Refunds wait for Stripe.
-5. [x] **Recurring class top-up cron** — `/api/cron/topup`, daily `30 8 * * *`.
-6. [x] **Min-notice + cutoff server-side** — `MIN_NOTICE_MIN` (120) filters slots and
-   is enforced in the booking + reschedule APIs; `BOOKING_WINDOW_DAYS` checked too.
-7. [x] **Multiple locations** — migration `0007`, `/coach/locations`, per-type location,
-   client display. Per-location **timezone stored but not wired** into slot generation — flag.
-8. [~] **Bookable resources** — migration `0008`: `resources` table + GiST `tstzrange`
-   exclusion constraints (inert until `resource_id` is set). No assignment logic / slot
-   integration — coupled to multi-staff, deferred. See flags.
-9. [ ] **Multi-staff booking** — **NOT STARTED (YAGNI for one coach).** Schema is fully
-   ready (`coach_id` + per-coach `availability` everywhere). Build the picker when a
-   second coach is hired. See flags.
-10. [x] **Waitlist** — migration `0009`, join/leave on a full class, `notifyWaitlist()`
-    on attendee cancel, coach sees waiting counts. Verified in the browser.
+## Done (v1 + review 2026-09-03)
 
-## → Round 2 (next working set)
-
-1. [x] **Production deploy green** — round 1 merged to `main`, live at
-   `bookings.technicourt.com` (region `syd1`). *Preview* env still lacks the two
-   `PUBLIC_SUPABASE_*` vars, so branch previews fail — set them (tick Preview) only if
-   branch previews are wanted; production is fine.
-2. [x] **Guest manage page (`/m/<id>`)** — booking id = link token, no login. Reschedule
-   (appointments) + cancel; linked from the confirmation / reschedule / reminder emails
-   and from `/bookings`. Replaces `/reschedule` and `/api/bookings`. Verified E2E
-   (token cancel with no session, reschedule, not-found state). Any token holder — incl.
-   staff — can manage, which also covers most of item 3.
-3. [x] **Coach/admin: manage any booking from the dashboard** — "Manage" link on every
-   appointment + class-roster row → `/m/<id>`. Staff bypass the notice-window and
-   past-session locks (field the phone call, clean up a no-show), land back on `/coach`
-   with a flash, and the client is emailed. Verified E2E.
-   *Follow-ups:* free-form time / double-book override (picker is still open-slots only,
-   ≥2h out); managing past bookings needs the dashboard to list them.
-4. [x] **Customer account area** — `/bookings` now carries a collapsible "Your details"
-   (name + phone edit, RLS-scoped update on `profiles`), every row shows session type /
-   variant / price / paid status, and completed appointments get a "Book again" link to
-   the session-type page. Verified E2E. *Later:* email change (auth-managed), PDF receipts.
-5. [x] **Intake forms / booking questions** — `session_types.intake_fields` (jsonb),
-   coach edits them on `/coach/services` (text / long-text / checkbox, required flag),
-   `/book` renders + validates them, answers land on `bookings.intake` and show on the
-   roster. Migration `0010`. Verified E2E.
-6. [x] **Packages / class passes** — `passes` table, `/coach/passes` issues one to a
-   client (any session or one type, count, price, expiry). `/book` offers a matching
-   pass; a DB trigger redeems it (price → 0, `payment_status` paid) race-safely and a
-   cancel hands the credit back. Balances show on `/bookings`. Migration `0011`.
-   Verified E2E incl. the refund. *Later:* Stripe self-serve purchase.
-7. [x] **Cancellation policy + no-show** — `session_types.cancel_cutoff_hours`; `/m/<id>`
-   blocks a client cancel inside the window (staff bypass), `no_show` is a third booking
-   status set from a roster button. Migration `0010`. Verified E2E. *Later:* no-show fee
-   (needs Stripe).
-8. [—] **SMS notifications** — skipped by request (no new subscription).
-9. [x] **Admin calendar** — `/coach/calendar`, day/week agenda merging appointments +
-   classes + blackouts, prev/next nav, each item links to `/m/<id>` or the schedule
-   page. Walk-in booking: pick session + date → open-slot buttons + client name/email →
-   `/api/walkin` books it and emails the client. Verified E2E. *Later:* drag-to-move,
-   edit blackouts inline, off-grid times.
-10. [~] **RLS org-scoping** — migration `0012` closes the real hole (blanket `UPDATE`
-    grant on `profiles` → scoped to `(name, phone)`). Full activation — every policy →
-    `current_org_id()`, org resolved from request host, column defaults dropped, a
-    cross-tenant read test — is the multi-tenant switch-on; do it with a real 2nd tenant.
-
-## Coach console redesign (done)
-
-Full clean-and-condense pass on `/coach/*`:
-- Shared `Coach.astro` layout — one tab bar (Agenda · Sessions · Classes · Hours ·
-  Locations · Passes), wider column, tighter rhythm, no per-page "← Dashboard".
-- `Dashboard` + `Calendar` merged into **Agenda** (`/coach`) — day/week agenda, each
-  booking a one-line row that expands for contact + intake + actions. `/coach/calendar`
-  deleted; walk-in + ICS feed live on the Agenda.
-- **Sessions** and **Locations** are now read-rows that expand to edit (was: every
-  field always an open form).
-- **Hours** — 7 read rows + one "add hours" form (was: an empty add-form per day).
-- Shared primitives in `global.css` (`@layer components`): `.field` (one input style
-  incl. native date/time), `.btn` / `.btn-ghost` / `.btn-quiet` / `.btn-danger`,
-  `.card`, `.rowlist`, `.eyebrow`. Applied site-wide, incl. the `/s/[id]` + `/m/[id]`
-  date pickers.
-
-## Admin / coach roles (done)
-
-- **Roles nailed down.** `admin` = create coaches, assign locations, oversee
-  everything, edit any coach's setup. `coach` = own sessions / hours / classes /
-  bookings only. `client` unchanged. Migration `0013` (`profiles.active`,
-  `staff_locations`, `grant update(role)`).
-- **`/admin`** console (middleware-gated): Overview (all-coach week), Staff
-  (add coach → account + temp-password email, assign locations, activate),
-  Locations + Passes (moved from `/coach`).
-- **Admin edits any coach** via `/coach/*?coach=<id>` (`getStaffScope`); the
-  `schedule` / `services` / `availability` / `blackouts` / `walkin` APIs honour
-  an admin target coach.
-- **Multi-coach public booking.** `/` groups same-named sessions into offerings;
-  a 2+-coach offering → `/g/<slug>` with a coach list **and** an "any available"
-  panel (`mergeAvailability` + `pickCoach` round-robin). `/book` gained a
-  `group` branch. `getPrimaryCoach()` retired → `getCoachProfile(id)`.
-  *Later:* coach bios/photos on `/g`, per-location slug disambiguation,
-  deactivated-coach sign-in handling, class co-teaching.
-
-## ⚠ Flags / roadblocks from round 1
-
-- **Vercel deploy** — RESOLVED for production. Round 1 was merged to `main` and deployed
-  green to `bookings.technicourt.com` (`syd1`, `topup` cron registered). The earlier
-  "never succeeded" note was stale — Production env vars were already set; only the
-  *failed* build was a **Preview** deploy of the feature branch, and the **Preview**
-  environment still lacks `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY`. Add those
-  (tick Preview) in the Vercel dashboard if you want branch previews to build. No MCP
-  tool can set them.
-- **Per-location timezone (item 7)** — `locations.timezone` is stored and editable but
-  `slots.ts` / `format.ts` still use the single global `PUBLIC_BUSINESS_TZ`. Fine while
-  every venue is in Adelaide. Threading a per-location tz through slot generation and
-  every `fmt*` call is a real piece of work — do it when a venue in another zone exists.
-- **Resources / courts (item 8)** — schema and the conflict constraints are in and inert.
-  Still needed to make it real: (a) coach UI to define courts per location, (b) assign a
-  free court at booking time, (c) slot generation that treats "every court busy" as
-  "closed". (b) and (c) only matter once multiple staff run parallel sessions, so this is
-  **coupled to multi-staff (item 9)** — tackle them together.
-- **Multi-staff (item 9)** — deliberately not built. A staff picker, per-staff service
-  lists, and "any available" routing are speculative for a one-coach business and would
-  touch every booking-flow file. The schema already carries `coach_id` throughout, so
-  this stays cheap to add later. Trigger: coach #2 is hired.
-
-Current state (v1 shipped): auth, roles (admin/coach/client), weekly availability +
-blackouts, session types (appointment/class) → variants → class occurrences,
-bookings with manual mark-paid, 30-min slot grid, client book/view/cancel, coach
-dashboard, per-coach ICS feed + per-booking .ics, confirm/cancel email, daily
-reminder cron. Single coach, single location, no online payment.
-
----
-
-## Tier 0 — Blockers (the platform is not usable/complete without these)
-
-- [ ] **Vercel deploy green** — set `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY`
-      + all other env vars (Production + Preview). Build has never succeeded.
-- [ ] **Online payments (Stripe)** — Checkout for paid sessions, deposit vs pay-in-full,
-      webhook → `payment_status`, refund on cancel. Replaces "coach ticks Mark paid".
-      Tables: `payments` (intent id, amount, status, refunded_at), keep manual mark-paid
-      as a fallback for cash.
-- [x] **Reschedule flow** — `/reschedule`, appointments only, migration `0006`.
-- [x] **Class cancellation notifies attendees** — email every confirmed seat. Auto-refund
-      waits for Stripe.
-- [x] **Recurring class top-up cron** — `/api/cron/topup`.
-- [x] **Booking cutoff + min-notice enforcement server-side** — `MIN_NOTICE_MIN` +
-      `BOOKING_WINDOW_DAYS`, enforced in the booking + reschedule APIs.
-
-## Tier 1 — Core booking-platform completeness
-
-- [~] **Multiple locations / venues** — `locations` table + per-type location + client
-      display shipped (migration `0007`). Left: per-location timezone in slot generation,
-      per-location availability. See flags.
-- [~] **Bookable resources (courts / rooms / lanes / seats)** — `resources` table +
-      `tstzrange` exclusion constraints shipped (migration `0008`), inert. Left: coach UI,
-      booking-time assignment, slot generation. Coupled to multi-staff. See flags.
-- [ ] **Multi-staff** — staff selector on the booking page, per-staff service lists,
-      "any available" + round-robin assignment, per-staff availability already exists.
-      Retire `getPrimaryCoach()`. **Deferred — YAGNI for one coach; schema ready.**
-- [ ] **Cancellation / no-show policy engine** — per-service: cancel cutoff, cancel fee
-      %, no-show fee, "no online cancel inside X hours". Coach marks no-show → fee.
-- [ ] **SMS notifications (Twilio/MessageBird)** — confirm, reminder, cancel, waitlist.
-      Reminder timing configurable (24h / 2h / both) instead of the fixed daily cron.
-- [~] **Waitlist** — join/leave a full class + notify-all on a freed seat shipped
-      (migration `0009`). Left: appointment waitlists, a claim/hold window, fall-through.
-- [ ] **Buffers + prep/cleanup time** — per-service buffer before/after that blocks the
-      grid without being bookable.
-- [ ] **Guest checkout** — book with name/email/phone, no account; auto-create a light
-      profile, magic-link to manage.
-- [ ] **Customer-facing account area** — edit profile, full booking history, upcoming
-      + past, rebook-in-one-click, download receipts/invoices.
-- [ ] **Two-way Google / Microsoft calendar sync** — push bookings to staff calendars,
-      read busy blocks back so external events hold the slot. (Apple stays ICS.)
-- [ ] **Proper admin console** — one calendar/day/week/agenda view across all
-      staff + resources + locations, create/edit/cancel any booking, walk-in booking,
-      block time, drag to reschedule.
-- [ ] **Intake forms / booking questions** — per-service custom fields (text, choice,
-      waiver checkbox) captured at booking, shown on the roster.
-
-## Tier 2 — Revenue & retention
-
-- [ ] **Packages / class passes / punch cards** — buy N sessions, redeem against
-      bookings, expiry, balance on the account.
-- [ ] **Memberships / subscriptions** — recurring Stripe billing, member-only pricing,
-      included credits per cycle.
-- [ ] **Coupons / discount codes / gift cards** — percent/fixed, per-service, usage caps,
-      expiry.
-- [ ] **Group bookings** — book multiple seats/people in one checkout (bring-a-friend,
-      a parent booking 3 kids).
-- [ ] **Recurring client appointments** — standing weekly 4pm slot for a regular,
-      auto-created, client can skip one.
-- [ ] **Multi-session courses / programs** — enrol once into an 8-week term, one price,
-      roster spans all sessions.
-- [ ] **Reviews / post-session feedback** — request after completion, rating + comment,
-      optional public display.
-- [ ] **Automated lifecycle email/SMS** — rebook nudge after N days idle, win-back,
-      birthday, "you have 2 passes left".
-- [ ] **Reports & analytics** — revenue (by service/staff/location/period), utilisation
-      %, no-show rate, new vs returning, top services, staff hours.
-
-## Tier 3 — White-label / multi-tenant SaaS (**WL**)
-
-- [~] **Tenant model** — `orgs` + `org_id` on all domain tables landed (migration
-      0005, defaulted to one org). Still to do: resolve org from request host/context,
-      scope every RLS policy to `current_org_id()`, drop the column defaults.
-- [ ] **Custom domain + subdomain per tenant** — `book.acme.com` / `acme.platform.com`,
-      cert automation, tenant resolved from host.
-- [ ] **Branding** — logo, colour, font, email from-address/domain, favicon, remove
-      "powered by", custom terms & privacy URLs. `config.ts` constants become per-org rows.
-- [ ] **Tenant self-serve onboarding** — sign up an org, guided setup (staff, services,
-      hours, Stripe Connect), trial.
-- [ ] **Platform billing** — charge tenants (Stripe Billing), plan tiers, feature gates,
-      usage limits (staff count, bookings/mo), dunning.
-- [ ] **Stripe Connect** — each tenant's payments land in *their* Stripe account,
-      platform takes application fee.
-- [ ] **Granular roles & permissions** — owner / manager / front-desk / staff /
-      read-only, per-location scoping.
-- [ ] **Embeddable booking widget + public API + webhooks** — iframe/script embed for
-      a tenant's own site, REST API, webhooks (booking.created/cancelled/paid).
-- [ ] **Super-admin console** — list/suspend/impersonate tenants, platform metrics,
-      per-tenant support.
-- [ ] **Per-tenant locale / currency / tax** — currency, number/date locale, tax rate
-      + tax-inclusive vs exclusive, invoice numbering.
-
-## Tier 4 — Operational depth
-
-- [ ] **In-person POS / front desk checkout** — take payment on arrival, tips, split,
-      partial, cash drawer reconcile.
-- [ ] **Retail add-ons** — sell grips/balls/drinks at checkout, basic inventory count.
-- [ ] **Staff scheduling** — shifts, time-off requests + approval, availability derived
-      from shifts, clock in/out.
-- [ ] **Check-in / attendance** — mark attended, QR or kiosk check-in, attendance in
-      reports and against passes.
-- [ ] **Waivers / contracts / e-signature** — one-time waiver per client, versioned,
-      block booking until signed.
-- [ ] **Invoicing + accounting sync** — proper invoices/receipts, Xero / QuickBooks export.
-- [ ] **Resource conflict rules** — a court needs 15-min drying, a room seats 12 but
-      only 8 for this class type, equipment that can't overlap.
-- [ ] **GDPR / privacy** — data export, hard delete + anonymise, consent log, audit
-      trail of admin actions.
-- [ ] **Notifications preference centre** — per-customer channel opt-in/out, unsubscribe
-      that actually suppresses.
-
-## Tier 5 — Polish / later
-
-- [ ] PWA / installable, offline roster for coaches
-- [ ] Native staff calendar apps (or just rely on synced Google/Apple)
-- [ ] i18n / multi-language customer UI
-- [ ] Peak / off-peak & dynamic pricing, last-minute discounts
-- [ ] Referral program ("give a session, get a session")
-- [ ] Zapier / Make connector
-- [ ] Cohort retention / LTV dashboards
-- [ ] WCAG 2.2 AA audit + fixes
-- [ ] Public status page / uptime monitoring
-- [ ] AI booking assistant (chat/NL "book me in Tuesday evening")
-
----
-
-## Sequencing recommendation
-
-1. **Tier 0 in order** — deploy, then payments, then reschedule, then the two class gaps.
-2. **Add `org_id` now** (Tier 3 first item) even though resale is later — retrofitting a
-   tenant column across a mature schema is the expensive path. One org row, everything
-   defaults to it, zero behaviour change today.
-3. **Tier 1: locations + resources together** — they share the double-booking
-   refactor (move the guard to a `tstzrange` exclusion constraint). Do multi-staff
-   right after, on the same conflict model.
-4. Then Tier 2 driven by what TechniCourt actually asks for (passes and memberships
-   are usually the first revenue ask for a coaching business).
-5. Tier 3 as a block when there's a real second customer — not before.
-
-## Don't build yet (YAGNI until asked)
-
-- Native mobile apps — synced calendars + PWA cover it.
-- Dynamic pricing, referral program, AI assistant — no signal these move the needle
-  for a single tennis club.
-- Full RRULE engine — the materialise + top-up cron is enough until multi-year series
-  or complex patterns are a real requirement.
-- Super-admin console / platform billing — only meaningful once Tier 3 tenancy exists.
+- Multi-coach booking, offerings, round-robin · guest `/m/<id>` manage ·
+  reschedule with `.ics` UPDATE · class waitlist (+ guest) · recurring classes
+  + top-up cron · multiple locations · intake questions · passes · cancel
+  cutoff + no-show · multi-staff admin console · embeddable widgets.
+- **Review 2026-09-03**: migrations 0015–0017 (locked-down writes, exclusion
+  constraint, `time_off`, RLS initplan); app-side security (email lookup,
+  `safeNext`, httpOnly cookies, scoped `frame-ancestors`, required
+  `CRON_SECRET`, escaped emails); scheduling correctness (dead-series top-up,
+  reminder window, stable slugs, business-local day math, notice-window
+  classes); password set/reset flow; coach notifications; admin-who-coaches;
+  client search; unpaid list + CSV; `time_off`; guest waitlist; favicon /
+  404 / 500 / noindex; CI; more unit tests.

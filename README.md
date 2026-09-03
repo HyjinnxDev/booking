@@ -1,114 +1,104 @@
 # TechniCourt Bookings
 
-Tennis coaching booking system. Astro (SSR) + Supabase + Resend, deployed to
-Vercel at `bookings.technicourt.com`.
+Tennis-coaching booking system. Astro (SSR) + Supabase + Resend, on Vercel at
+`bookings.technicourt.com`.
 
 ## Stack
 
-- Astro `output: 'server'` with `@astrojs/vercel`
+- Astro `output: 'server'` with `@astrojs/vercel` (region `syd1`)
 - Supabase — Postgres, Auth (email + password), RLS
-- Resend — transactional email with per-booking `.ics`
+- Resend — transactional email; per-booking `.ics` + Google Calendar links
 - Tailwind v4 via `@tailwindcss/vite`
-- Vercel Cron — daily 24h reminders
+- Vercel Cron — daily reminders + weekly-series top-up (Hobby: 2 crons max)
+- Zero client-side JS framework. Full-page loads; a tiny inline script does
+  press feedback and iframe resize.
 
-## v1 features
+## What it does
 
-- Client sign-up / login
-- Session types: **appointments** (1:1, one option per length/price) and
-  **classes** (dated group sessions with a seat count, one-off or weekly)
-- Booking page: pick a session type → an appointment option + time, or a class seat
-- Client: view + cancel own bookings
-- Coach dashboard (role-gated): appointment list, class rosters, mark-paid,
-  weekly availability, blackout dates
-- Coach: `/coach/services` (session types + options), `/coach/schedule` (class sessions)
-- Per-coach read-only ICS feed at `/cal/<token>.ics` (webcal subscription)
-- Confirmation + cancellation email, each with an `.ics` attachment
-- `/api/cron/reminders` — emails reminders for bookings in the next 24h
-
-## Since v1 (branch `feature/platform-buildout`)
-
-- `org_id` on every table (single-org seam for white-label; RLS not scoped yet)
-- **Manage a booking without logging in** (`/m/<id>`) — the booking id is the link
-  token; reschedule (appointments) + cancel, from the confirmation email or `/bookings`
-- Class cancellation now **emails every attendee**
-- **Min notice** (`MIN_NOTICE_MIN`, 120 min) enforced server-side, not just hidden in the UI
-- **Multiple locations** — `/coach/locations`, each session type has a location
-  (per-location timezone is stored but slot generation still uses `PUBLIC_BUSINESS_TZ`)
-- **Class waitlist** — join a full class; a freed seat emails every waitlister
-- Second cron `/api/cron/topup` — extends weekly class series to `SERIES_WEEKS` ahead
-- `resources` (courts) table + conflict constraints exist but aren't wired to booking yet
-- **Intake questions** per session type (`/coach/services`) — captured at booking, shown on the roster
-- **Passes / packs** (`/coach/passes`) — issue a bundle, client redeems at checkout, cancel refunds the credit
-- **Cancel cutoff** per session type + a **no-show** status set from the roster
-- **Coach calendar** (`/coach/calendar`) — day/week agenda + walk-in booking
-- **Multi-staff** — an admin (`/admin`) creates coaches, assigns them to locations,
-  oversees all bookings, and can edit any coach's setup. Coaches manage only their own.
-- **Multi-coach booking** — same-named sessions across coaches group into one
-  offering (`/g/<slug>`); the client picks a coach or "any available" (round-robin)
-
-See `ROADMAP.md` for what's next and the open flags.
+- **Public booking** (`/`): appointments (1:1, an option per length/price) and
+  classes (dated group sessions, one-off or weekly). Multi-coach services group
+  into one offering at `/g/<slug>` — pick a coach or take the first opening
+  (round-robin).
+- **Manage without logging in** (`/m/<id>`): the booking id is the capability
+  token. Reschedule (appointments) + cancel, gated by one lock =
+  `max(min-notice, cancel-cutoff)`. Guests land here after booking.
+- **Accounts**: guests get one automatically; a "set a password" link (our own
+  Resend email, not Supabase SMTP) covers welcome, `/forgot`, and
+  `/account/password`.
+- **Client area** (`/bookings`): upcoming/past, passes, edit name/phone,
+  set password.
+- **Coach console** (`/coach`): agenda, class rosters, mark-paid, no-show
+  (only after start), walk-in booking, weekly hours + "copy Monday",
+  time off (any interval), session types + options + intake questions,
+  class scheduling + edit, embeddable widgets, ICS feed (rotatable token).
+- **Admin console** (`/admin`): all-coach agenda, client search, unpaid chase
+  list + CSV export, staff (add coaches, "I also coach" for admins,
+  deactivate), locations, passes, org settings, embed builder.
+- **Email**: confirmation / reschedule / reassignment / cancellation /
+  reminder to the client (HTML + text, escaped, `.ics` with a 1h alarm,
+  Google Calendar link, maps link); **coach notice** on every booking event;
+  a daily "tomorrow's agenda" to each coach.
+- **Waitlist**: join a full class (guests too); a freed seat emails everyone
+  still waiting; booking a seat leaves the list.
 
 ## Environment variables
 
-See `.env.example`. All are required.
+See `.env.example`. All required.
 
 | Var | Where | Notes |
 |---|---|---|
-| `PUBLIC_SUPABASE_URL` | client + server | Supabase project URL |
-| `PUBLIC_SUPABASE_ANON_KEY` | client + server | Supabase anon key |
-| `PUBLIC_SITE_URL` | client + server | `https://bookings.technicourt.com` — used in emails + ICS feed URLs |
-| `PUBLIC_BUSINESS_TZ` | client + server | IANA tz, e.g. `Australia/Adelaide`. Slot generation + display. |
-| `SUPABASE_SERVICE_ROLE_KEY` | server | Bypasses RLS. Slot computation, ICS feed, cron. |
+| `PUBLIC_SUPABASE_URL` / `PUBLIC_SUPABASE_ANON_KEY` | client + server | project + anon key |
+| `PUBLIC_SITE_URL` | client + server | used in emails, ICS, recovery links |
+| `PUBLIC_BUSINESS_TZ` | client + server | IANA tz; slot generation + display |
+| `SUPABASE_SERVICE_ROLE_KEY` | server | bypasses RLS; all booking/catalog writes go through it |
 | `RESEND_API_KEY` | server | Resend API key |
-| `EMAIL_FROM` | server | `TechniCourt <bookings@technicourt.com>` — domain must be verified in Resend |
-| `CRON_SECRET` | server + Vercel | Random string. Vercel Cron sends it as a Bearer token. |
+| `EMAIL_FROM` | server | `TechniCourt <bookings@technicourt.com>` — domain verified in Resend |
+| `CRON_SECRET` | server + Vercel | required; Vercel Cron sends it as a Bearer token |
 
 ## Setup
 
-1. **Supabase project** → run the files in `supabase/migrations/` in order (SQL
-   editor, or `supabase db push`).
-2. **Supabase Auth** → Providers → Email: enable. For the fastest v1, turn
-   **Confirm email** OFF. (If left on, `/auth/callback` handles the link and you
-   must add `https://bookings.technicourt.com/auth/callback` to
-   Auth → URL Configuration → Redirect URLs.)
-3. **Create the coach**: have them sign up in the app, then edit
-   `supabase/seed.sql` with their email and run it (promotes to `coach`, adds
-   default availability).
-4. **Resend** → verify the `technicourt.com` sending domain, create an API key.
-5. **Vercel** → set all env vars, set `CRON_SECRET`, deploy. `vercel.json`
-   registers the daily cron (`0 8 * * *` UTC).
-6. Point `bookings.technicourt.com` at the Vercel project.
+1. **Supabase** → run `supabase/migrations/*` in order (`supabase db push` or
+   the SQL editor).
+2. **Auth** → enable Email provider. "Confirm email" can stay off (guest
+   accounts are pre-confirmed). If on, add `<PUBLIC_SITE_URL>/auth/callback`
+   to Auth → URL Configuration → Redirect URLs. Point Auth → SMTP at Resend so
+   any Supabase-originated mail isn't rate-limited. Turn on
+   **Leaked password protection** (Auth → Policies).
+3. **First admin** (after they've signed up in the app):
+   ```sql
+   update public.profiles set role = 'admin', active = false
+   where email = 'you@example.com';
+   ```
+   `active = false` = "administers but doesn't take bookings"; flip it with the
+   "I also coach" button on `/admin/staff`. Admins then add coaches from that
+   page (each gets a set-password email).
+4. **Resend** → verify the sending domain, create an API key.
+5. **Vercel** → set every env var incl. `CRON_SECRET`, deploy. `vercel.json`
+   registers the crons and a 60s function timeout.
 
 ## Local dev
 
 ```bash
-cp .env.example .env    # fill in real values
+cp .env.example .env
 npm install
 npm run dev
-npm test                # slot / DST logic
+npm run check   # astro check (types)
+npm test        # vitest — slots/DST, intake, embed, offering slugs, series top-up
 ```
 
-Node ≥ 22.19 (Astro engine requirement).
+Node ≥ 22.19.
 
-## Notes / deviations
+## Notes
 
-- `bookings` uses a **partial** unique index `(coach_id, start_at) WHERE status =
-  'confirmed'` instead of a plain `UNIQUE`, so a cancelled slot can be re-booked.
-  Race safety is unchanged — concurrent confirmed inserts still collide (23505).
-- Clients can update only `bookings.status` (column grant), and RLS only lets
-  them set it to `cancelled`. No reschedule in v1 (cancel + rebook).
-- One coach in v1. `getPrimaryCoach()` = earliest coach profile. Multi-coach
-  selection UI is v2; the schema already carries `coach_id` throughout.
-- Appointment start times step on a fixed `SLOT_STEP_MIN` (30) grid; each
-  session option sets its own length. A booked appointment or a scheduled class
-  blocks every overlapping grid start.
-- Recurring classes are **materialised** `SERIES_WEEKS` (12) ahead when scheduled
-  — no RRULE, no auto top-up. The coach re-runs the form to extend.
-- Payments are v2: a paid session books immediately at `payment_status = 'unpaid'`
-  and the coach ticks "Mark paid" (cash/card in person). Price-0 → `'free'`.
-- Class capacity is enforced by a `before insert` trigger that row-locks the
-  occurrence; concurrent overfill / a client's second seat get SQLSTATE 23505.
-- Cancelling a class (occurrence or series) releases seats **and emails every
-  confirmed attendee** (best-effort). Refunds still wait for Stripe.
-- Emails and the ICS feed are best-effort: a Resend failure is logged, not
-  surfaced to the user, and never blocks a booking.
+- `bookings` has a GiST exclusion constraint
+  `(coach_id, tstzrange(start_at, end_at)) WHERE status='confirmed' AND class_occurrence_id IS NULL`
+  — real overlap protection. Violations are **23P01** (handled alongside 23505).
+- Class capacity is a `before insert` trigger that row-locks the occurrence;
+  overfill / a second seat raise 23505.
+- Payments in person: a paid session books at `payment_status='unpaid'` and the
+  coach ticks "Mark paid" (Stripe deferred).
+- All timestamps are UTC; `PUBLIC_BUSINESS_TZ` is display + slot generation only.
+- RLS lets clients *read* their own data and edit only `profiles(name, phone)`.
+  No client writes to `bookings` — the REST surface can't bypass booking rules.
+
+See `ROADMAP.md`.

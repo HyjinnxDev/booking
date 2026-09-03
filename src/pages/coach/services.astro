@@ -36,7 +36,7 @@ const priceSummary = (t: (typeof types)[number]) => {
   desc="Appointments let clients pick any open time. Classes are dated group sessions — add their dates on the Classes tab."
   editingCoach={scope.isSelf ? undefined : scope.coachName}
 >
-  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm">{err}</p>}
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
 
   <div class="space-y-2">
     {

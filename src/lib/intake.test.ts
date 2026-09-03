@@ -47,4 +47,12 @@ describe('collectIntake', () => {
     f.set('intake:Injuries?', 'none');
     expect(collectIntake(fields, f).error).toMatch(/Waiver/);
   });
+
+  it('a renamed label ignores answers submitted under the old name (§5)', () => {
+    const renamed = parseIntakeFields([{ label: 'Any injuries?', type: 'text', required: false }]);
+    const f = new FormData();
+    f.set('intake:Injuries?', 'old answer'); // stale field name
+    const { answers } = collectIntake(renamed, f);
+    expect(answers).toEqual({}); // nothing collected under the new label
+  });
 });

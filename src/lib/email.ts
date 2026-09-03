@@ -93,8 +93,11 @@ function whenBlock(m: BookingMail): string {
     location: [m.locationName, m.locationAddress].filter(Boolean).join(', ') || undefined,
     details: manageUrl(m.bookingId),
   });
+  const mapHref = m.locationAddress
+    ? `https://maps.google.com/?q=${encodeURIComponent(m.locationAddress)}`
+    : null;
   return `<p style="font-size:18px"><strong>${esc(fmtLong(m.startAt))}</strong></p>
-    ${loc ? `<p style="color:#555">📍 ${loc}</p>` : ''}
+    ${loc ? `<p style="color:#555">📍 ${mapHref ? `<a href="${mapHref}">${loc}</a>` : loc}</p>` : ''}
     <p style="font-size:13px"><a href="${gcal}">Add to Google Calendar</a> · the attached file works everywhere else.</p>`;
 }
 

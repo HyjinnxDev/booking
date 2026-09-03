@@ -1,13 +1,8 @@
 import { createSupabaseAdmin } from './supabase';
 import { upcomingOccurrences } from './sessions';
+import { slugify, assignOfferingSlugs } from './slug';
 
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+export { slugify };
 
 export interface OfferingCoach {
   id: string;
@@ -93,27 +88,7 @@ export async function listOfferings(): Promise<Offering[]> {
     g.durations.sort((a, b) => a - b);
     if (g.priceFromCents === Infinity) g.priceFromCents = 0;
   }
-
-  // §2.9: deterministic, stable slugs. Sort first so slug assignment doesn't
-  // depend on DB row order, then disambiguate same-name offerings by location
-  // (readable + stable) before falling back to a numeric suffix.
-  out.sort((a, b) => a.name.localeCompare(b.name) || a.locationId.localeCompare(b.locationId));
-  const baseCount = new Map<string, number>();
-  for (const g of out) {
-    const base = slugify(g.name);
-    baseCount.set(base, (baseCount.get(base) ?? 0) + 1);
-  }
-  const used = new Set<string>();
-  for (const g of out) {
-    const base = slugify(g.name);
-    let slug =
-      (baseCount.get(base) ?? 0) > 1 && g.location?.name ? `${base}-${slugify(g.location.name)}` : base;
-    let candidate = slug;
-    for (let i = 2; used.has(candidate); i++) candidate = `${slug}-${i}`;
-    used.add(candidate);
-    g.slug = candidate;
-  }
-  return out;
+  return assignOfferingSlugs(out);
 }
 
 export async function getOffering(slug: string): Promise<Offering | null> {
