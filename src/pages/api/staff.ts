@@ -9,6 +9,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   if (locals.profile?.role !== 'admin') return new Response('Forbidden', { status: 403 });
+  const me = locals.user!.id;
 
   const admin = createSupabaseAdmin();
   const form = await request.formData();
@@ -81,6 +82,21 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         .eq('id', s('staff_id'))
         .in('role', ['coach', 'admin']);
       return redirect(BACK);
+    }
+
+    case 'staff.delete': {
+      const staffId = s('staff_id');
+      if (!staffId || staffId === me) return fail("Can't delete your own account.");
+      // profiles.id references auth.users on delete cascade, so this also drops
+      // their session types, availability, staff_locations, etc. bookings stays
+      // on delete restrict (§4.11), so anyone with booking history, past or
+      // upcoming, can't be deleted here; deactivate them instead.
+      const { error } = await admin.auth.admin.deleteUser(staffId);
+      if (error) {
+        const hasHistory = /foreign key|violat/i.test(error.message);
+        return fail(hasHistory ? "Has booking history and can't be deleted. Deactivate them instead." : error.message);
+      }
+      return redirect(`${BACK}?deleted=1`);
     }
 
     default:
