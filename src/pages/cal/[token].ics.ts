@@ -3,7 +3,7 @@ import { createSupabaseAdmin } from '../../lib/supabase';
 import { coachFeedIcs, type IcsEvent } from '../../lib/ics';
 
 // Read-only calendar subscription feed. The token in the URL is the only
-// credential — treat it like a password.
+// credential, treat it like a password.
 export const GET: APIRoute = async ({ params }) => {
   const token = params.token;
   if (!token || !/^[0-9a-f-]{36}$/i.test(token)) {
@@ -83,7 +83,7 @@ export const GET: APIRoute = async ({ params }) => {
       id: b.id,
       startAt: b.start_at,
       endAt: b.end_at,
-      summary: `Tennis — ${nameById.get(b.client_id) || 'Client'}`,
+      summary: `Tennis with ${nameById.get(b.client_id) || 'Client'}`,
       description: b.notes || undefined,
     })),
     ...occ.map((o) => {
@@ -102,7 +102,7 @@ export const GET: APIRoute = async ({ params }) => {
     headers: {
       'content-type': 'text/calendar; charset=utf-8',
       'content-disposition': 'inline; filename="technicourt.ics"',
-      // §3.13: the token is a personal credential — don't let shared caches keep it.
+      // §3.13: the token is a personal credential, don't let shared caches keep it.
       'cache-control': 'private, max-age=300',
     },
   });

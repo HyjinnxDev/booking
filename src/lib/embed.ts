@@ -1,9 +1,9 @@
 // Embeddable booking widgets. `public/embed.js` drops an <iframe> (inline) or a
 // button that opens one (popup), pointed at a normal public page with ?embed=1.
-// Site chrome is hidden by isEmbed() in middleware — either the ?embed=1 param
+// Site chrome is hidden by isEmbed() in middleware, either the ?embed=1 param
 // or the browser's Sec-Fetch-Dest:iframe on every in-frame navigation, so the
 // whole flow (/, /s, /g, /book, /m) stays chrome-less with no per-page code.
-// ponytail: Safari <16.4 sends no Sec-Fetch-Dest — those users see the site
+// ponytail: Safari <16.4 sends no Sec-Fetch-Dest, those users see the site
 // header after the first in-frame navigation. Add link-level ?embed propagation
 // only if that ~2% matters.
 

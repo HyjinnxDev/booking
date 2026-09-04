@@ -34,7 +34,7 @@ const from = addDaysStr(todayStr(), -90);
 const saved = Astro.url.searchParams.get('paid');
 ---
 
-<Admin title="Unpaid" desc="Past sessions still marked unpaid — the ones to chase.">
+<Admin title="Unpaid" desc="Past sessions still marked unpaid. The ones to chase.">
   <div slot="actions">
     <a href={`/admin/export.csv?from=${from}&to=${todayStr()}`} class="btn btn-ghost btn-sm">Export 90 days (CSV)</a>
   </div>
@@ -51,7 +51,7 @@ const saved = Astro.url.searchParams.get('paid');
         <p class="text-sm font-semibold">
           {g.name}
           <span class="ml-2 font-normal text-ink-soft">{g.email}{g.phone ? ` · ${g.phone}` : ''}</span>
-          <span class="ml-2 text-ink-soft">— {fmtPrice(g.total)}</span>
+          <span class="ml-2 text-ink-soft">- {fmtPrice(g.total)}</span>
         </p>
         <div class="mt-2 space-y-1.5">
           {g.items.map((b) => (

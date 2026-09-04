@@ -54,7 +54,7 @@ const issued = url.searchParams.get('issued');
         <span class="mb-1 block text-ink-soft">Covers</span>
         <select name="session_type_id" class="field">
           <option value="">Any session</option>
-          {types.map((t) => <option value={t.id}>{t.name}{t.coachName ? ` — ${t.coachName}` : ''}</option>)}
+          {types.map((t) => <option value={t.id}>{t.name}{t.coachName ? `, ${t.coachName}` : ''}</option>)}
         </select>
       </label>
       <label class="text-sm">
@@ -62,11 +62,11 @@ const issued = url.searchParams.get('issued');
         <input name="total" type="number" required value="10" min="1" max="100" class="field" />
       </label>
       <label class="text-sm">
-        <span class="mb-1 block text-ink-soft">Price paid — optional</span>
+        <span class="mb-1 block text-ink-soft">Price paid (optional)</span>
         <input name="price" type="number" min="0" step="0.01" placeholder="0" class="field" />
       </label>
       <label class="text-sm">
-        <span class="mb-1 block text-ink-soft">Expires — optional</span>
+        <span class="mb-1 block text-ink-soft">Expires (optional)</span>
         <input name="expires_at" type="date" class="field" />
       </label>
       <div class="flex items-end">

@@ -2,7 +2,7 @@ import { createSupabaseAdmin } from './supabase';
 import { sendWaitlistOpening } from './email';
 
 /**
- * A seat may have opened in a class occurrence — email every waitlister who
+ * A seat may have opened in a class occurrence, email every waitlister who
  * hasn't been notified yet. First to book wins; the capacity trigger settles
  * the race. Best-effort: a send failure is logged, not surfaced.
  */

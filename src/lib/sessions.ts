@@ -198,7 +198,7 @@ export async function getOccurrence(id: string): Promise<Occurrence | null> {
 }
 
 /**
- * §2.1: the latest still-scheduled occurrence of each *live* series — one that
+ * §2.1: the latest still-scheduled occurrence of each *live* series, one that
  * still has an occurrence today or later. A series whose newest scheduled row is
  * in the past was cancelled (series.cancel only touches future rows), so the
  * top-up cron must not regenerate it.

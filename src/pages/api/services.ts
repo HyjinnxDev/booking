@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
         .select('id')
         .single();
       if (error) return fail(error.message);
-      // A class always has exactly one variant — seed it so the coach just edits.
+      // A class always has exactly one variant, seed it so the coach just edits.
       if (kind === 'class') {
         await supabase.from('session_variants').insert({
           session_type_id: data.id,
@@ -97,7 +97,7 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
       // §2.13: FK from bookings.session_variant_id blocks the delete when there's
       // history. Surface it instead of silently doing nothing.
       const { error } = await supabase.from('session_types').delete().eq('id', s('id'));
-      if (error) return fail('This has bookings on it — untick “Visible to clients” instead of deleting.');
+      if (error) return fail('This has bookings on it. Untick “Visible to clients” instead of deleting.');
       return redirect(BACK);
     }
 
@@ -141,7 +141,7 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
 
     case 'variant.delete': {
       const { error } = await supabase.from('session_variants').delete().eq('id', s('id'));
-      if (error) return fail('This option has bookings on it — set its price/duration to retire it, not delete.');
+      if (error) return fail('This option has bookings on it. Set its price/duration to retire it, not delete.');
       return redirect(BACK);
     }
 

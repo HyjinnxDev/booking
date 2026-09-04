@@ -41,7 +41,7 @@ const isAllDay = (s: string, e: string) =>
   formatInTimeZone(e, BUSINESS_TZ, 'HH:mm') === '00:00';
 const offLabel = (o: { start_at: string; end_at: string }) =>
   isAllDay(o.start_at, o.end_at)
-    ? `${formatInTimeZone(o.start_at, BUSINESS_TZ, 'EEE d MMM')} — all day`
+    ? `${formatInTimeZone(o.start_at, BUSINESS_TZ, 'EEE d MMM')}, all day`
     : `${fmtLong(o.start_at)} → ${formatInTimeZone(o.end_at, BUSINESS_TZ, 'h:mmaaa')}`;
 ---
 
@@ -98,7 +98,7 @@ const offLabel = (o: { start_at: string; end_at: string }) =>
   </form>
 
   <p class="eyebrow mt-8">Time off</p>
-  <p class="mt-1 text-sm text-ink-soft">Closed periods — a whole day, or a couple of hours for an appointment.</p>
+  <p class="mt-1 text-sm text-ink-soft">Closed periods, a whole day, or a couple of hours for an appointment.</p>
 
   <div class="card rowlist mt-2">
     {
@@ -106,7 +106,7 @@ const offLabel = (o: { start_at: string; end_at: string }) =>
         <div class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
           <span class="tnum">
             {offLabel(o)}
-            {o.reason && <span class="text-ink-soft"> — {o.reason}</span>}
+            {o.reason && <span class="text-ink-soft">, {o.reason}</span>}
           </span>
           <form method="POST" action={apiB}>
             <input type="hidden" name="action" value="delete" />

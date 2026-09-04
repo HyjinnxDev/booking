@@ -15,7 +15,7 @@ export interface Pass {
 
 const COLS = 'id, client_id, session_type_id, name, total, used, price_cents, status, expires_at';
 
-/** Passes a client can still redeem — active, credit left, not expired. */
+/** Passes a client can still redeem, active, credit left, not expired. */
 export async function activePassesForClient(clientId: string): Promise<Pass[]> {
   const db = createSupabaseAdmin();
   const today = todayStr(); // §2.10: business-local date, not UTC

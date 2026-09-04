@@ -1,6 +1,6 @@
 ---
 // Snippet generator + live preview for the embeddable booking widget.
-// Pure client-side once rendered — no endpoint, the snippet is just a string.
+// Pure client-side once rendered, no endpoint, the snippet is just a string.
 interface Props {
   targets: { label: string; path: string }[];
   /** Show the accent-colour control (admin builds branded buttons). */
@@ -21,8 +21,8 @@ const { targets, allowAccent = false } = Astro.props;
     <label class="text-sm">
       <span class="mb-1 block text-ink-soft">Style</span>
       <select class="field" data-eb="mode">
-        <option value="inline">Inline — sits in the page</option>
-        <option value="popup">Popup — a button opens it</option>
+        <option value="inline">Inline, sits in the page</option>
+        <option value="popup">Popup, a button opens it</option>
       </select>
     </label>
 

@@ -4,13 +4,13 @@ import { getSettings } from '../lib/settings';
 
 interface Props {
   title?: string;
-  /** Wider main column + tighter vertical padding — for the coach console. */
+  /** Wider main column + tighter vertical padding, for the coach console. */
   wide?: boolean;
 }
 const { title, wide } = Astro.props;
 const { user, profile, embed } = Astro.locals;
-const isStaff = profile?.role === 'coach' || profile?.role === 'admin';
 const path = Astro.url.pathname;
+const inConsole = path.startsWith('/admin') || path.startsWith('/coach');
 const { brand } = await getSettings();
 // Keep private / per-booking pages out of search results.
 const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/)/.test(path);
@@ -22,7 +22,7 @@ const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title ? `${title} · ${brand}` : brand}</title>
-    <meta name="description" content={`Book tennis coaching with ${brand} — 1:1 lessons and group classes.`} />
+    <meta name="description" content={`Book tennis coaching with ${brand}, 1:1 lessons and group classes.`} />
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -46,9 +46,8 @@ const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/
     <header class="border-b border-line">
       <nav class="mx-auto flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-1 px-5 py-4">
         <a href="/" class="mr-1 font-display text-lg font-extrabold tracking-tight">{brand}</a>
-        <a href="/" class:list={['text-sm hover:text-ink', path === '/' ? 'text-ink' : 'text-ink-soft']}>Book</a>
         {
-          user && (
+          !inConsole && user && (
             <a
               href="/bookings"
               class:list={['text-sm hover:text-ink', path === '/bookings' ? 'text-ink' : 'text-ink-soft']}
@@ -58,23 +57,13 @@ const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/
           )
         }
         {
-          profile?.role === 'admin' && (
-            <a
-              href="/admin"
-              class:list={['text-sm hover:text-ink', path.startsWith('/admin') ? 'text-ink' : 'text-ink-soft']}
-            >
-              Admin
-            </a>
+          !path.startsWith('/admin') && profile?.role === 'admin' && (
+            <a href="/admin" class="text-sm text-ink-soft hover:text-ink">Admin</a>
           )
         }
         {
-          isStaff && (
-            <a
-              href="/coach"
-              class:list={['text-sm hover:text-ink', path.startsWith('/coach') ? 'text-ink' : 'text-ink-soft']}
-            >
-              Coach
-            </a>
+          !path.startsWith('/coach') && profile?.role === 'coach' && (
+            <a href="/coach" class="text-sm text-ink-soft hover:text-ink">Coach</a>
           )
         }
         <span class="hidden flex-1 sm:block"></span>
@@ -146,7 +135,7 @@ const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/
           true,
         );
 
-        // Coming back via bfcache — clear any stale loading state, and re-enable
+        // Coming back via bfcache, clear any stale loading state, and re-enable
         // buttons the submit handler disabled before the page was frozen.
         addEventListener('pageshow', function () {
           stop();
@@ -162,7 +151,7 @@ const noindex = /^\/(m\/|coach|admin|bookings|account|login|signup|forgot|auth\/
     {embed && (
       <script is:inline>
         (function () {
-          // The layout is min-height:100% — inside a fixed iframe that would
+          // The layout is min-height:100%, inside a fixed iframe that would
           // never let scrollHeight shrink. Let content set the height instead.
           document.documentElement.style.height = 'auto';
           document.body.style.minHeight = '0';

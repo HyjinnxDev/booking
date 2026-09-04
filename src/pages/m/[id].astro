@@ -10,7 +10,7 @@ import { fmtTime, fmtLong, fmtPrice, todayStr, addDaysStr, calFmt, localDay } fr
 import { getSettings } from '../../lib/settings';
 import { listCoaches } from '../../lib/staff';
 
-// Manage one booking. The booking id in the URL is the capability token — holding
+// Manage one booking. The booking id in the URL is the capability token, holding
 // the link (from the confirmation email, or from /bookings) is what authorises
 // reschedule + cancel. No login required; that's the point.
 const { params, url, redirect, request, locals } = Astro;
@@ -51,7 +51,7 @@ const clientLockMs = Math.max(settings.minNoticeMin * 60_000, cutoffH * 3600_000
 const clientLocked = booking
   ? new Date(booking.start_at).getTime() <= Date.now() + clientLockMs
   : true;
-// Staff bypass every "too close / already passed" lock — they field the phone call
+// Staff bypass every "too close / already passed" lock, they field the phone call
 // at 9am to move a 10am booking, or clean up a no-show.
 const canCancel = !!booking && !cancelled && (isStaff || (!past && !clientLocked));
 const canReschedule =
@@ -73,7 +73,7 @@ if (booking && request.method === 'POST' && !cancelled) {
   if (action === 'cancel') {
     if (!canCancel) {
       // §2.15: /bookings shows Cancel for everything; say why nothing happened.
-      error = 'Too close to the session to cancel online — contact your coach.';
+      error = 'Too close to the session to cancel online. Contact your coach.';
     } else {
       const nextSeq = (booking.ics_sequence ?? 0) + 1;
       const { data: c } = await db
@@ -311,7 +311,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
       <>
         <h1 class="mt-3 text-3xl font-extrabold sm:text-4xl">Booking not found</h1>
         <p class="mt-3 text-ink-soft">
-          This link doesn't match a booking — it may have been cancelled already.
+          This link doesn't match a booking. It may have been cancelled already.
         </p>
         <a href="/" class="mt-6 inline-block text-sm font-semibold text-ink underline underline-offset-2">
           Book a session
@@ -327,7 +327,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
           <p class="mt-3 border-l-2 border-ball bg-white px-4 py-3 text-sm">
             Confirmation and a calendar invite are on their way to your email.
             {url.searchParams.get('new') === '1' && (
-              <span> We also set up an account — there's a link in that email to set a password so you can manage this booking any time.</span>
+              <span> We also set up an account. There is a link in that email to set a password so you can manage this booking any time.</span>
             )}
           </p>
         )}
@@ -393,7 +393,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                     Reschedule
                   </a>
                 ) : isStaff ? null : (
-                  <span class="text-sm text-ink-soft">Too close to the session to reschedule online — contact {coach?.name ?? 'your coach'}.</span>
+                  <span class="text-sm text-ink-soft">Too close to the session to reschedule online. Contact {coach?.name ?? 'your coach'}.</span>
                 ))}
               {canCancel ? (
                 <form method="POST" onsubmit="return confirm('Cancel this booking?')">
@@ -402,7 +402,7 @@ const title = booking ? 'Manage your booking' : 'Booking not found';
                 </form>
               ) : !isStaff && !past && clientLocked ? (
                 <span class="text-sm text-ink-soft">
-                  Too close to the session to cancel online — contact {coach?.name ?? 'your coach'}.
+                  Too close to the session to cancel online. Contact {coach?.name ?? 'your coach'}.
                 </span>
               ) : null}
 

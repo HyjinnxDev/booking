@@ -8,7 +8,7 @@ import { getSettings } from '../../lib/settings';
 const { params, url } = Astro;
 const offering = await getOffering(params.slug!);
 if (!offering) return Astro.redirect('/');
-// A single-coach offering has no "any" choice to make — go straight in.
+// A single-coach offering has no "any" choice to make, go straight in.
 if (offering.coaches.length === 1) return Astro.redirect(`/s/${offering.coaches[0].typeId}`);
 
 const errorCode = url.searchParams.get('error');

@@ -26,7 +26,7 @@ export interface Offering {
 }
 
 /**
- * Every active session type from every active coach, grouped into "offerings" —
+ * Every active session type from every active coach, grouped into "offerings" -
  * same name + kind + location = one bookable service that one or more coaches
  * deliver.
  */

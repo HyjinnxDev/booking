@@ -9,7 +9,7 @@ export interface Coach {
 }
 
 /**
- * Everyone who can take bookings — coaches, plus admins who also coach (§3.6).
+ * Everyone who can take bookings, coaches, plus admins who also coach (§3.6).
  * `active` is the "takes bookings" flag; `activeOnly` filters to it.
  */
 export async function listCoaches(opts: { activeOnly?: boolean } = {}): Promise<Coach[]> {

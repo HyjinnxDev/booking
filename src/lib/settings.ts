@@ -17,7 +17,7 @@ const DEFAULTS: Settings = {
   seriesWeeks: SERIES_WEEKS,
 };
 
-// Cached for the instance lifetime — settings change rarely and this runs on
+// Cached for the instance lifetime, settings change rarely and this runs on
 // every booking page. An admin's save takes up to a minute to fully propagate.
 let cache: { v: Settings; at: number } | null = null;
 const TTL_MS = 60_000;

@@ -1,9 +1,33 @@
 ---
 import Admin from '../../layouts/Admin.astro';
+import EmbedBuilder from '../../components/EmbedBuilder.astro';
 import { getSettings } from '../../lib/settings';
+import { listLocations } from '../../lib/locations';
+import { listCoaches } from '../../lib/staff';
+import { listOfferings } from '../../lib/offerings';
+import { listSessionTypes } from '../../lib/sessions';
 
 const { url } = Astro;
-const s = await getSettings();
+const [s, locations, coaches, offerings] = await Promise.all([
+  getSettings(),
+  listLocations(),
+  listCoaches({ activeOnly: true }),
+  listOfferings(),
+]);
+const perCoach = await Promise.all(
+  coaches.map(async (c) => ({
+    c,
+    types: (await listSessionTypes(c.id, { activeOnly: true })).filter((t) => t.variants.length),
+  })),
+);
+const embedTargets = [
+  { label: 'Whole booking site (every session)', path: '/' },
+  ...offerings.map((o) => ({
+    label: o.coaches.length > 1 ? `${o.name} (all coaches)` : `${o.name}, ${o.coaches[0].name}`,
+    path: o.coaches.length > 1 ? `/g/${o.slug}` : `/s/${o.coaches[0].typeId}`,
+  })),
+  ...perCoach.flatMap(({ c, types }) => types.map((t) => ({ label: `${c.name} · ${t.name}`, path: `/s/${t.id}` }))),
+];
 const saved = url.searchParams.get('saved');
 const err = url.searchParams.get('error');
 ---
@@ -64,4 +88,70 @@ const err = url.searchParams.get('error');
       <button class="btn">Save settings</button>
     </div>
   </form>
+
+  <details class="mt-8">
+    <summary class="eyebrow cursor-pointer">Locations</summary>
+    <p class="mt-2 max-w-prose text-sm text-ink-soft">
+      Venues where sessions run. A coach is assigned to locations on the Staff tab, then picks one per session.
+      Slot times use the business timezone; per-location timezones are not live yet.
+    </p>
+
+    <div class="mt-3 space-y-2">
+      {
+        locations.map((l) => (
+          <form method="POST" action="/api/locations" class="card flex flex-wrap items-center gap-2 p-3 text-sm">
+            <input type="hidden" name="action" value="location.update" />
+            <input type="hidden" name="id" value={l.id} />
+            <input name="name" value={l.name} class="field w-40 font-semibold" />
+            <input name="address" value={l.address ?? ''} placeholder="Address" class="field grow" />
+            <input name="timezone" value={l.timezone} class="field w-44" />
+            <label class="flex items-center gap-1.5 text-ink-soft">
+              <input type="checkbox" name="active" checked={l.active} /> Active
+            </label>
+            <button class="btn btn-ghost btn-sm">Save</button>
+            <button
+              name="action"
+              value="location.delete"
+              class="btn btn-quiet btn-sm"
+              aria-label="Delete location"
+              onclick="return confirm('Delete this location?')"
+            >
+              ×
+            </button>
+          </form>
+        ))
+      }
+      {locations.length === 0 && <p class="text-sm text-ink-soft">No locations yet.</p>}
+    </div>
+
+    <details class="mt-4">
+      <summary class="eyebrow cursor-pointer">Add a location</summary>
+      <form method="POST" action="/api/locations" class="mt-3 flex flex-wrap items-end gap-2">
+        <input type="hidden" name="action" value="location.create" />
+        <label class="text-sm">
+          <span class="mb-1 block text-ink-soft">Name</span>
+          <input name="name" required placeholder="North courts" class="field w-44" />
+        </label>
+        <label class="grow text-sm">
+          <span class="mb-1 block text-ink-soft">Address (optional)</span>
+          <input name="address" class="field" />
+        </label>
+        <label class="text-sm">
+          <span class="mb-1 block text-ink-soft">Timezone</span>
+          <input name="timezone" value="Australia/Adelaide" class="field w-44" />
+        </label>
+        <button class="btn">Create</button>
+      </form>
+    </details>
+  </details>
+
+  <details class="mt-6">
+    <summary class="eyebrow cursor-pointer">Embed widgets</summary>
+    <p class="mt-2 max-w-prose text-sm text-ink-soft">
+      Booking widgets for the main site or any coach's own website. Pick a target, copy the snippet.
+    </p>
+    <div class="mt-3">
+      <EmbedBuilder targets={embedTargets} allowAccent />
+    </div>
+  </details>
 </Admin>

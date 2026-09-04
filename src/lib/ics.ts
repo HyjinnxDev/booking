@@ -79,7 +79,7 @@ export function coachFeedIcs(coachName: string, events: IcsEvent[]): string {
       'VERSION:2.0',
       `PRODID:-//${BRAND}//Bookings//EN`,
       'CALSCALE:GREGORIAN',
-      fold(`X-WR-CALNAME:${esc(`${coachName} — ${BRAND}`)}`),
+      fold(`X-WR-CALNAME:${esc(`${coachName}, ${BRAND}`)}`),
       'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
       'X-PUBLISHED-TTL:PT1H',
       ...events.flatMap((e) => vevent(e, false)),
@@ -88,7 +88,7 @@ export function coachFeedIcs(coachName: string, events: IcsEvent[]): string {
   );
 }
 
-/** "Add to Google Calendar" URL — friendlier than an .ics on a phone (§3.8). */
+/** "Add to Google Calendar" URL, friendlier than an .ics on a phone (§3.8). */
 export function googleCalUrl(e: {
   summary: string;
   startAt: string;

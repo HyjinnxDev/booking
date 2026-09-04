@@ -29,11 +29,11 @@ const rangeEnd = fromZonedTime(`${to}T00:00:00`, BUSINESS_TZ).toISOString();
 const nowIso = new Date().toISOString();
 
 const flash = url.searchParams.get('cancelled')
-  ? 'Booking cancelled — the client was emailed.'
+  ? 'Booking cancelled, the client was emailed.'
   : url.searchParams.get('rescheduled')
-    ? 'Booking moved — the client was emailed.'
+    ? 'Booking moved, the client was emailed.'
     : url.searchParams.get('reassigned')
-      ? 'Booking reassigned — the client was emailed.'
+      ? 'Booking reassigned, the client was emailed.'
       : '';
 
 const [coaches, locations, { data: apptRows }, occAll, { data: blackouts }, { count: unpaid }] = await Promise.all([
@@ -96,7 +96,7 @@ for (const t of (blackouts ?? []) as any[]) {
     at: t.start_at,
     day: localDay(t.start_at),
     kind: 'blackout',
-    label: `${when} · ${coachName(t.coach_id)} off${t.reason ? ` — ${t.reason}` : ''}`,
+    label: `${when} · ${coachName(t.coach_id)} off${t.reason ? `, ${t.reason}` : ''}`,
   });
 }
 rows.sort((a, b) => a.at.localeCompare(b.at));
@@ -116,9 +116,9 @@ const rangeLabel =
 
 <Admin title="Agenda">
   <div slot="actions" class="flex items-center gap-1.5 text-sm">
-    <a href={nav({ d: prevD })} class="btn btn-ghost btn-sm" aria-label="Previous">←</a>
+    <a href={nav({ d: prevD })} class="btn btn-quiet btn-sm" aria-label="Previous">←</a>
     <a href={nav({ d: todayStr() })} class="btn btn-ghost btn-sm">Today</a>
-    <a href={nav({ d: nextD })} class="btn btn-ghost btn-sm" aria-label="Next">→</a>
+    <a href={nav({ d: nextD })} class="btn btn-quiet btn-sm" aria-label="Next">→</a>
     <a href={nav({ span: span === 'day' ? 'week' : 'day' })} class="btn btn-ghost btn-sm">
       {span === 'day' ? 'Week' : 'Day'}
     </a>
@@ -136,7 +136,7 @@ const rangeLabel =
     <a href="/admin/unpaid" class="card p-3 transition-colors hover:border-ink">
       <p class="eyebrow">Unpaid · upcoming</p>
       <p class="mt-1 font-display text-xl font-bold">{unpaid ?? 0}</p>
-      <p class="text-xs text-ink-soft">plus past — chase list →</p>
+      <p class="text-xs text-ink-soft">plus past Â· chase list →</p>
     </a>
   </div>
 
@@ -168,7 +168,7 @@ const rangeLabel =
           <section>
             {span === 'week' && <p class="mb-1.5 text-sm font-semibold text-ink-soft">{calFmt(day, 'EEEE d MMM')}</p>}
             {list.length === 0 ? (
-              <p class="text-sm text-ink-soft">{span === 'week' ? '—' : 'Nothing booked.'}</p>
+              <p class="text-sm text-ink-soft">{span === 'week' ? '-' : 'Nothing booked.'}</p>
             ) : (
               <div class="card rowlist">
                 {list.map((r) =>
@@ -206,7 +206,7 @@ const rangeLabel =
                         {r.b.intake &&
                           Object.entries(r.b.intake).map(([k, v]) => (
                             <p class="text-ink-soft">
-                              <span class="font-semibold text-ink">{k}</span> — {v === true ? 'yes' : String(v)}
+                              <span class="font-semibold text-ink">{k}</span>, {v === true ? 'yes' : String(v)}
                             </p>
                           ))}
                         <div class="flex flex-wrap gap-2 pt-1">

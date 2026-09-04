@@ -29,7 +29,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       if (!id) {
         const { data, error } = await admin.auth.admin.createUser({
           email,
-          password: randomBytes(24).toString('hex'), // discarded — coach sets their own
+          password: randomBytes(24).toString('hex'), // discarded, coach sets their own
           email_confirm: true,
           user_metadata: { name },
         });
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
       // §1.11: lock_role() now allows a null auth.uid() (service role), so the
       // admin client can promote directly like every other staff write.
-      // §3.6: don't demote an existing admin to coach — just make them bookable.
+      // §3.6: don't demote an existing admin to coach. Just make them bookable.
       const { data: cur } = await admin.from('profiles').select('role').eq('id', id).maybeSingle();
       const patch: Record<string, unknown> = { name, active: true };
       if (cur?.role !== 'admin') patch.role = 'coach';

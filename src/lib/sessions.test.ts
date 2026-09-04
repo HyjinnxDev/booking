@@ -9,14 +9,14 @@ describe('latestPerLiveSeries (§2.1)', () => {
     const rows = [
       row('a', '2026-06-20T09:00:00Z'),
       row('a', '2026-06-27T09:00:00Z'),
-      row('a', '2026-06-13T09:00:00Z'), // past — ignored
+      row('a', '2026-06-13T09:00:00Z'), // past, ignored
       row('b', '2026-07-01T18:00:00Z'),
     ];
     const out = latestPerLiveSeries(rows, now).sort((x, y) => x.series_id!.localeCompare(y.series_id!));
     expect(out).toEqual([row('a', '2026-06-27T09:00:00Z'), row('b', '2026-07-01T18:00:00Z')]);
   });
 
-  it('a series whose last occurrence is in the past is dead — nothing returned', () => {
+  it('a series whose last occurrence is in the past is dead, nothing returned', () => {
     const rows = [row('a', '2026-05-01T09:00:00Z'), row('a', '2026-06-08T09:00:00Z')];
     expect(latestPerLiveSeries(rows, now)).toEqual([]);
   });

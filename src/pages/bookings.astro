@@ -34,7 +34,7 @@ const settings = await getSettings();
 
 const now = Date.now();
 const bookings = (rows ?? []) as any[];
-// §2.15: same lock as /m/[id] — don't offer a control that will bounce.
+// §2.15: same lock as /m/[id], don't offer a control that will bounce.
 const lockedFor = (b: any) => {
   const cutoffH = b.variant?.session_types?.cancel_cutoff_hours ?? 0;
   const lockMs = Math.max(settings.minNoticeMin * 60_000, cutoffH * 3600_000);
@@ -101,7 +101,7 @@ const chip = 'btn btn-ghost btn-sm';
         <ul class="mt-2 space-y-1 text-sm">
           {passes.map((p) => (
             <li>
-              {p.name} — <span class="font-semibold">{p.total - p.used}</span> of {p.total} left
+              {p.name}, <span class="font-semibold">{p.total - p.used}</span> of {p.total} left
               {p.expires_at ? <span class="text-ink-soft"> · expires {p.expires_at}</span> : null}
             </li>
           ))}

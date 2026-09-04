@@ -97,7 +97,7 @@ if (occId) {
     intakeFields: parseIntakeFields(v.type.intake_fields),
   };
 } else if (groupSlug && groupDur) {
-  // "Any available coach" — resolve a coach + their matching variant for this slot.
+  // "Any available coach", resolve a coach + their matching variant for this slot.
   const offering = await getOffering(groupSlug);
   if (!offering || offering.kind !== 'appointment') return redirect('/');
   const pool = offering.coaches.filter((c) => c.variants.some((v) => v.duration_min === groupDur));
@@ -165,7 +165,7 @@ async function createBooking(clientId: string, to: string, name: string, setPass
 
   if (e) {
     if (e.code === '23514') {
-      error = "That pass couldn't be applied — go back and book without it.";
+      error = "That pass could not be applied. Go back and book without it.";
       return null;
     }
     // 23505 = unique index (class seat / one-per-class); 23P01 = the coach
@@ -243,7 +243,7 @@ if (request.method === 'POST') {
   chosenPassId = String(form.get('pass_id') ?? '');
   if (intake.error) error = intake.error;
   else if (loggedIn) {
-    // §2.5: the name field isn't rendered for logged-in users — use the profile.
+    // §2.5: the name field isn't rendered for logged-in users, use the profile.
     const done = await createBooking(
       locals.user!.id,
       locals.user!.email!,
@@ -305,7 +305,7 @@ const backHref = groupSlug
         )}
       </p>
     )}
-    {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person — we'll mark it off.</p>}
+    {ctx.priceCents > 0 && <p class="mt-1 text-xs text-ink-soft">Pay in person. We will mark it off.</p>}
   </div>
 
   {error && <p class="mt-5 border-l-2 border-red-500 bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
@@ -347,7 +347,7 @@ const backHref = groupSlug
           </label>
           <label class="text-sm">
             <span class="font-semibold">Phone</span>
-            <span class="text-ink-soft"> — optional</span>
+            <span class="text-ink-soft"> (optional)</span>
             <input
               type="tel"
               name="phone"
@@ -409,10 +409,10 @@ const backHref = groupSlug
             name="pass_id"
             class="field mt-1"
           >
-            <option value="">{ctx.priceCents > 0 ? `Pay in person — ${fmtPrice(ctx.priceCents)}` : 'No payment needed'}</option>
+            <option value="">{ctx.priceCents > 0 ? `Pay in person, ${fmtPrice(ctx.priceCents)}` : 'No payment needed'}</option>
             {myPasses.map((p) => (
               <option value={p.id}>
-                Use “{p.name}” — {p.total - p.used} of {p.total} left
+                Use “{p.name}”, {p.total - p.used} of {p.total} left
               </option>
             ))}
           </select>
@@ -422,7 +422,7 @@ const backHref = groupSlug
 
     <label class="text-sm">
       <span class="font-semibold">Notes for {ctx.coachName}</span>
-      <span class="text-ink-soft"> — optional</span>
+      <span class="text-ink-soft"> (optional)</span>
       <textarea
         name="notes"
         rows="2"

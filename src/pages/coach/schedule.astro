@@ -44,7 +44,7 @@ const defaultUntil = addDaysStr(today, (await getSettings()).seriesWeeks * 7);
               const v = t.variants.find((x) => x.active) ?? t.variants[0];
               return (
                 <option value={t.id} data-cap={v?.capacity ?? 8}>
-                  {t.name}{v ? ` — ${v.duration_min} min` : ''}
+                  {t.name}{v ? `, ${v.duration_min} min` : ''}
                 </option>
               );
             })}
@@ -123,7 +123,7 @@ const defaultUntil = addDaysStr(today, (await getSettings()).seriesWeeks * 7);
                   </>
                 )}
                 <button class="btn btn-ghost btn-sm">Save</button>
-                {o.seats_taken > 0 && <span class="text-xs text-ink-soft">Has bookings — cancel to move the time.</span>}
+                {o.seats_taken > 0 && <span class="text-xs text-ink-soft">Has bookings. Cancel to move the time.</span>}
               </form>
               <div class="flex items-center gap-1.5">
                 <form method="POST" action={api} onsubmit="return confirm('Cancel this class? Everyone booked is emailed.')">

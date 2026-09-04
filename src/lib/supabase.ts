@@ -31,7 +31,7 @@ export function createSupabaseServer(ctx: { request: Request; cookies: AstroCook
   });
 }
 
-/** Service-role client. Bypasses RLS — server only, never expose to the browser. */
+/** Service-role client. Bypasses RLS, server only, never expose to the browser. */
 export function createSupabaseAdmin(): SupabaseClient {
   return createClient(PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

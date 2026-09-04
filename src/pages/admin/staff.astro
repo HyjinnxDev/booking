@@ -29,7 +29,7 @@ const manageTabs = [
 
 <Admin title="Staff" desc="Add coaches, set which locations they work at, and jump into any coach's setup.">
   {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
-  {created && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Coach added — a sign-in email is on its way.</p>}
+  {created && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Coach added. A sign-in email is on its way.</p>}
 
   <details class="card" open={!!err || coaches.length === 0}>
     <summary class="eyebrow cursor-pointer px-4 py-3">Add a coach</summary>
@@ -115,7 +115,7 @@ const manageTabs = [
                   {isAdmin
                     ? c.active
                       ? 'Stop taking bookings'
-                      : 'I also coach — take bookings'
+                      : 'I also coach and take bookings'
                     : c.active
                       ? 'Deactivate coach'
                       : 'Reactivate coach'}
@@ -126,7 +126,7 @@ const manageTabs = [
               </form>
               {c.active && future > 0 && (
                 <p class="text-xs text-ink-soft">
-                  {future} upcoming booking{future === 1 ? '' : 's'} —{' '}
+                  {future} upcoming booking{future === 1 ? '' : 's'} -{' '}
                   <a href={`/admin?coach=${c.id}&span=week`} class="underline underline-offset-2 hover:text-ink">
                     review the agenda
                   </a>{' '}

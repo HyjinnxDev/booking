@@ -1,7 +1,9 @@
 ---
 import Coach from '../../layouts/Coach.astro';
+import EmbedBuilder from '../../components/EmbedBuilder.astro';
 import { listSessionTypes } from '../../lib/sessions';
 import { listLocations } from '../../lib/locations';
+import { listOfferings } from '../../lib/offerings';
 import { parseIntakeFields } from '../../lib/intake';
 import { fmtPrice } from '../../lib/format';
 import { getStaffScope, coachLocationIds } from '../../lib/staff';
@@ -12,11 +14,18 @@ if (scope.needsPick) return Astro.redirect('/admin/staff');
 const coachId = scope.coachId!;
 const api = scope.isSelf ? '/api/services' : `/api/services?coach=${coachId}`;
 
-const [types, allLocations, myLocIds] = await Promise.all([
+const [types, allLocations, myLocIds, offerings] = await Promise.all([
   listSessionTypes(coachId),
   listLocations({ activeOnly: true }),
   coachLocationIds(coachId),
+  listOfferings(),
 ]);
+const embedTargets = [
+  ...types.filter((t) => t.active && t.variants.length).map((t) => ({ label: t.name, path: `/s/${t.id}` })),
+  ...offerings
+    .filter((o) => o.coaches.length > 1 && o.coaches.some((c) => c.id === coachId))
+    .map((o) => ({ label: `${o.name} (all coaches)`, path: `/g/${o.slug}` })),
+];
 // A coach picks from their assigned locations; if none are assigned, all are open.
 const locations = myLocIds.length ? allLocations.filter((l) => myLocIds.includes(l.id)) : allLocations;
 const multiLoc = locations.length > 1;
@@ -33,7 +42,7 @@ const priceSummary = (t: (typeof types)[number]) => {
 
 <Coach
   title="Sessions"
-  desc="Appointments let clients pick any open time. Classes are dated group sessions — add their dates on the Classes tab."
+  desc="Appointments let clients pick any open time. Classes are dated group sessions. Add their dates on the Classes tab."
   editingCoach={scope.isSelf ? undefined : scope.coachName}
 >
   {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
@@ -214,5 +223,16 @@ const priceSummary = (t: (typeof types)[number]) => {
       <button class="btn">Create</button>
     </form>
     <p class="mt-2 text-xs text-ink-soft">A class starts with one editable option (60 min, 8 seats, free).</p>
+  </details>
+
+  <details class="mt-6">
+    <summary class="eyebrow cursor-pointer">Embed on your website</summary>
+    {embedTargets.length === 0 ? (
+      <p class="mt-2 text-sm text-ink-soft">Add a visible session type first, then come back for its embed code.</p>
+    ) : (
+      <div class="mt-3">
+        <EmbedBuilder targets={embedTargets} />
+      </div>
+    )}
   </details>
 </Coach>

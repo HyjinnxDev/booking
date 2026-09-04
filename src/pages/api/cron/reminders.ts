@@ -78,7 +78,7 @@ export const GET: APIRoute = async ({ request }) => {
     .order('start_at');
   const agendaByCoach = new Map<string, string[]>();
   for (const r of (tomRows ?? []) as any[]) {
-    const line = `${fmtTime(r.start_at)} — ${r.client?.name || 'Client'} (${r.variant?.session_types?.name ?? 'Session'})`;
+    const line = `${fmtTime(r.start_at)} · ${r.client?.name || 'Client'} (${r.variant?.session_types?.name ?? 'Session'})`;
     (agendaByCoach.get(r.coach_id) ?? agendaByCoach.set(r.coach_id, []).get(r.coach_id)!).push(line);
   }
   let agendas = 0;

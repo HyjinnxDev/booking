@@ -17,7 +17,7 @@ declare global {
         phone: string | null;
         active: boolean;
       } | null;
-      /** Request is inside an embedded widget iframe — render without site chrome. */
+      /** Request is inside an embedded widget iframe, render without site chrome. */
       embed: boolean;
     }
   }

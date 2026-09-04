@@ -19,7 +19,7 @@ if (Astro.request.method === 'POST') {
       console.error('forgot-password send failed', e);
     }
   }
-  done = true; // always — don't leak whether the address exists
+  done = true; // always, don't leak whether the address exists
 }
 ---
 

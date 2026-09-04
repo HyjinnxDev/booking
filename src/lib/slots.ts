@@ -13,7 +13,7 @@ export interface Slot {
   endAt: string; // UTC ISO
 }
 
-/** A busy interval to subtract — an existing booking or a scheduled class. */
+/** A busy interval to subtract, an existing booking or a scheduled class. */
 export interface BusyRange {
   start: string; // UTC ISO
   end: string; // UTC ISO
@@ -124,7 +124,7 @@ export async function getAvailableSlots(
       .eq('status', 'scheduled')
       .gte('start_at', winStart.toISOString())
       .lt('start_at', winEnd.toISOString()),
-    // §3.3: time_off is an arbitrary interval — a whole day or a lunch hour.
+    // §3.3: time_off is an arbitrary interval, a whole day or a lunch hour.
     db
       .from('time_off')
       .select('start_at, end_at')

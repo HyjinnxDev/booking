@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ request }) => {
 
   // §2.1: only look at occurrences from today on. A series whose last scheduled
   // occurrence is in the past was cancelled (series.cancel only touches future
-  // rows) — without this filter the cron regenerates it from that old date.
+  // rows), without this filter the cron regenerates it from that old date.
   const { data: rows, error } = await db
     .from('class_occurrences')
     .select('series_id, session_variant_id, coach_id, capacity, start_at, end_at')

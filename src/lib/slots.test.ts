@@ -30,7 +30,7 @@ describe('weekdayOf', () => {
   });
 });
 
-describe('DST — America/New_York', () => {
+describe('DST, America/New_York', () => {
   const tz = 'America/New_York';
   const sundayRule: AvailabilityRule[] = [{ weekday: 0, start_time: '09:00', end_time: '11:00' }];
 
@@ -59,7 +59,7 @@ describe('DST — America/New_York', () => {
   });
 });
 
-describe('DST — Australia/Sydney', () => {
+describe('DST, Australia/Sydney', () => {
   const tz = 'Australia/Sydney';
   const sundayRule: AvailabilityRule[] = [{ weekday: 0, start_time: '08:00', end_time: '10:00' }];
 

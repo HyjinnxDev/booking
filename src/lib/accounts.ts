@@ -13,7 +13,7 @@ export interface ClientAccount {
 /**
  * §3.1: a server-side recovery link that lands on our own /auth/callback with a
  * `token_hash` query param (not a hash fragment), so the SSR client can call
- * verifyOtp and set the session cookie. Bypasses Supabase's rate-limited SMTP —
+ * verifyOtp and set the session cookie. Bypasses Supabase's rate-limited SMTP -
  * we send the link ourselves via Resend.
  */
 export async function recoveryLink(email: string, next = '/account/password'): Promise<string | null> {
@@ -49,12 +49,12 @@ export async function findOrCreateClient(input: {
   if (!id) {
     const { data, error } = await db.auth.admin.createUser({
       email,
-      password: randomBytes(24).toString('hex'), // discarded — the user sets their own
+      password: randomBytes(24).toString('hex'), // discarded, the user sets their own
       email_confirm: true,
       user_metadata: { name: input.name },
     });
     if (error || !data.user) {
-      // Lost a race with another booking for the same email — reuse that account.
+      // Lost a race with another booking for the same email, reuse that account.
       const retry = await lookup();
       if (!retry.data) throw error ?? new Error('Could not create an account for that email.');
       id = retry.data.id;

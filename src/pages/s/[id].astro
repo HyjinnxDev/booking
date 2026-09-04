@@ -40,7 +40,7 @@ const rail = Array.from({ length: 7 }, (_, i) => {
 });
 
 // ---- class state ----
-// §2.11: hide occurrences starting inside the notice window — /book bounces them.
+// §2.11: hide occurrences starting inside the notice window, /book bounces them.
 const occ =
   type.kind === 'class'
     ? await upcomingOccurrences({

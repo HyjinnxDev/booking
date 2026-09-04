@@ -12,6 +12,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "vitest run",
+    "email:preview": "vitest run src/lib/email.preview.test.ts && echo Open test/email-previews/",
     "astro": "astro"
   },
   "dependencies": {

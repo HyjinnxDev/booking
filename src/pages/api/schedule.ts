@@ -158,14 +158,14 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
         .select('id', { count: 'exact', head: true })
         .eq('class_occurrence_id', id)
         .eq('status', 'confirmed');
-      if (capacity < (taken ?? 0)) return fail(`${taken} seats are already booked — set capacity to ${taken} or more.`);
+      if (capacity < (taken ?? 0)) return fail(`${taken} seats are already booked. Set capacity to ${taken} or more.`);
 
       const patch: Record<string, unknown> = { capacity };
       const date = s('date');
       const time = s('time');
       if (date && time) {
         if (!DATE.test(date) || !TIME.test(time)) return fail('Pick a valid date and time.');
-        if ((taken ?? 0) > 0) return fail('This class has bookings — cancel it and reschedule instead of moving it.');
+        if ((taken ?? 0) > 0) return fail('This class has bookings. Cancel it and reschedule instead of moving it.');
         const dur = (occ as any).variant?.duration_min ?? 60;
         const start = fromZonedTime(`${date}T${time}:00`, BUSINESS_TZ);
         patch.start_at = start.toISOString();

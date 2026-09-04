@@ -3,7 +3,7 @@
  * (class cancellations, waitlist blasts, reminders) was sequential and could
  * blow the Vercel function timeout. Resend's batch API doesn't take attachments,
  * so we keep per-message sends but stop waiting on them one at a time.
- * A task's rejection is logged, not propagated — callers stay best-effort.
+ * A task's rejection is logged, not propagated, callers stay best-effort.
  */
 export async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<unknown>): Promise<void> {
   const q = items.slice();

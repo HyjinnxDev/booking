@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 
-const BACK = '/admin/locations';
+const BACK = '/admin/settings';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const { profile, supabase } = locals;

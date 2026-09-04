@@ -10,7 +10,7 @@ export const SITE_URL = (import.meta.env.PUBLIC_SITE_URL || 'https://bookings.te
 export const SLOT_STEP_MIN = 30;
 
 // ponytail: recurring classes are materialised this many weeks ahead when the
-// coach schedules them — no RRULE, no auto top-up. They re-run the form to
+// coach schedules them, no RRULE, no auto top-up. They re-run the form to
 // extend. Add a top-up cron only if long-running series become the norm.
 export const SERIES_WEEKS = 12;
 

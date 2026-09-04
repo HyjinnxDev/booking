@@ -49,7 +49,7 @@ export const POST: APIRoute = async ({ request, locals, redirect, url }) => {
 
   const sep = back.includes('?') ? '&' : '?';
   if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !TIME.test(start) || !TIME.test(end) || start >= end) {
-    return redirect(`${back}${sep}error=${encodeURIComponent('Invalid times — start must be before end.')}`);
+    return redirect(`${back}${sep}error=${encodeURIComponent('Invalid times. Start must be before end.')}`);
   }
 
   const { error } = await supabase.from('availability').insert({
