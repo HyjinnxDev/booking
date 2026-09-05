@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro';
+import { logAudit } from '../../lib/audit';
 
 const BACK = '/admin/settings';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
-  const { profile, supabase } = locals;
+  const { profile, supabase, user } = locals;
   if (profile?.role !== 'admin') return new Response('Forbidden', { status: 403 });
 
   const form = await request.formData();
@@ -21,6 +22,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         timezone: s('timezone') || 'Australia/Adelaide',
       });
       if (error) return fail(error.message);
+      await logAudit(user!.id, 'location.create', { name });
       return redirect(BACK);
     }
 
@@ -35,12 +37,14 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         })
         .eq('id', s('id'));
       if (error) return fail(error.message);
+      await logAudit(user!.id, 'location.update', { id: s('id') });
       return redirect(BACK);
     }
 
     case 'location.delete': {
       const { error } = await supabase.from('locations').delete().eq('id', s('id'));
       if (error) return fail('That location is still used by a session type. Move those first.');
+      await logAudit(user!.id, 'location.delete', { id: s('id') });
       return redirect(BACK);
     }
 

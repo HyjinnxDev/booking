@@ -411,6 +411,21 @@ export async function sendCoachNotice(m: {
   });
 }
 
+// Admin broadcast to clients or coaches. Plain text in, escaped + line breaks
+// out — no rich formatting, this is an announcement, not a template.
+export async function sendBroadcast(m: { to: string; subject: string; body: string }) {
+  const bodyHtml = esc(m.body).replace(/\n/g, '<br>');
+  return send({
+    from: FROM,
+    to: m.to,
+    subject: m.subject,
+    html: shell({
+      preheader: m.body.slice(0, 140),
+      body: h1(esc(m.subject)) + p(bodyHtml),
+    }),
+  });
+}
+
 // §5: daily agenda for a coach, sent from the reminders cron.
 export async function sendAgenda(m: { to: string; coachName: string; date: string; lines: string[] }) {
   const rows = m.lines

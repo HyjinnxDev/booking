@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { createSupabaseAdmin } from '../../lib/supabase';
 import { recoveryLink } from '../../lib/accounts';
 import { sendSetPassword } from '../../lib/email';
+import { logAudit } from '../../lib/audit';
 
 const BACK = '/admin/staff';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,6 +62,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
           console.error('staff welcome email failed', e);
         }
       }
+      await logAudit(me, 'staff.create', { name, email });
       return redirect(`${BACK}?created=1`);
     }
 
@@ -76,11 +78,10 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
     case 'staff.active': {
       // For a coach this is "deactivate"; for an admin it's the "I also coach" toggle (§3.6).
-      await admin
-        .from('profiles')
-        .update({ active: form.get('to') === 'true' })
-        .eq('id', s('staff_id'))
-        .in('role', ['coach', 'admin']);
+      const staffId = s('staff_id');
+      const to = form.get('to') === 'true';
+      await admin.from('profiles').update({ active: to }).eq('id', staffId).in('role', ['coach', 'admin']);
+      await logAudit(me, 'staff.active', { staff_id: staffId, active: to });
       return redirect(BACK);
     }
 
@@ -96,6 +97,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
         const hasHistory = /foreign key|violat/i.test(error.message);
         return fail(hasHistory ? "Has booking history and can't be deleted. Deactivate them instead." : error.message);
       }
+      await logAudit(me, 'staff.delete', { staff_id: staffId });
       return redirect(`${BACK}?deleted=1`);
     }
 

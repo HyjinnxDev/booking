@@ -1,0 +1,80 @@
+---
+import Coach from '../../layouts/Coach.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { fmtPrice, calFmt, localDay, todayStr } from '../../lib/format';
+import { getStaffScope } from '../../lib/staff';
+
+const scope = await getStaffScope(Astro);
+if (scope.needsPick) return Astro.redirect('/admin/staff');
+const coachId = scope.coachId!;
+const db = createSupabaseAdmin();
+const nowIso = new Date().toISOString();
+
+// Delivered sessions (past, not cancelled) and what's still to come.
+const [{ data: pastRows }, { data: upcomingRows }] = await Promise.all([
+  db
+    .from('bookings')
+    .select('start_at, price_cents, payment_status')
+    .eq('coach_id', coachId)
+    .in('status', ['confirmed', 'no_show'])
+    .lt('start_at', nowIso)
+    .order('start_at', { ascending: false }),
+  db
+    .from('bookings')
+    .select('price_cents')
+    .eq('coach_id', coachId)
+    .eq('status', 'confirmed')
+    .gte('start_at', nowIso),
+]);
+
+const past = (pastRows ?? []) as any[];
+const upcomingTotal = ((upcomingRows ?? []) as any[]).reduce((n, b) => n + (b.price_cents ?? 0), 0);
+
+const byMonth = new Map<string, { total: number; unpaid: number; count: number }>();
+for (const b of past) {
+  const key = localDay(b.start_at).slice(0, 7);
+  const g = byMonth.get(key) ?? byMonth.set(key, { total: 0, unpaid: 0, count: 0 }).get(key)!;
+  g.total += b.price_cents ?? 0;
+  g.count += 1;
+  if (b.payment_status === 'unpaid') g.unpaid += b.price_cents ?? 0;
+}
+const months = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 12);
+const thisMonthKey = todayStr().slice(0, 7);
+const thisMonth = byMonth.get(thisMonthKey) ?? { total: 0, unpaid: 0, count: 0 };
+---
+
+<Coach title="Earnings" desc="Value of sessions you've delivered, by month. Not a payout — this club settles pay separately." editingCoach={scope.isSelf ? undefined : scope.coachName}>
+  <div class="grid gap-3 sm:grid-cols-3">
+    <div class="card p-3">
+      <p class="eyebrow">This month</p>
+      <p class="mt-1 font-display text-xl font-bold">{fmtPrice(thisMonth.total)}</p>
+      <p class="text-xs text-ink-soft">{thisMonth.count} session{thisMonth.count === 1 ? '' : 's'}</p>
+    </div>
+    <div class="card p-3">
+      <p class="eyebrow">Unpaid, this month</p>
+      <p class="mt-1 font-display text-xl font-bold">{fmtPrice(thisMonth.unpaid)}</p>
+    </div>
+    <div class="card p-3">
+      <p class="eyebrow">Upcoming, booked</p>
+      <p class="mt-1 font-display text-xl font-bold">{fmtPrice(upcomingTotal)}</p>
+    </div>
+  </div>
+
+  <p class="eyebrow mt-8">By month</p>
+  <div class="card rowlist mt-2 text-sm">
+    {months.length === 0 ? (
+      <p class="px-4 py-3 text-ink-soft">No delivered sessions yet.</p>
+    ) : (
+      months.map(([key, g]) => (
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+          <span class="font-semibold">{calFmt(`${key}-01`, 'MMMM yyyy')}</span>
+          <span class="text-ink-soft">
+            {g.count} session{g.count === 1 ? '' : 's'} ·{' '}
+            <strong class="text-ink">{fmtPrice(g.total)}</strong>
+            {g.unpaid > 0 && ` · ${fmtPrice(g.unpaid)} unpaid`}
+          </span>
+        </div>
+      ))
+    )}
+  </div>
+</Coach>

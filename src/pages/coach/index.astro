@@ -48,7 +48,7 @@ const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promi
   db
     .from('bookings')
     .select(
-      'id, start_at, status, notes, intake, price_cents, payment_status, pass_id, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( name, email, phone )',
+      'id, start_at, status, notes, intake, price_cents, payment_status, pass_id, variant:session_variant_id ( name, session_types ( name ) ), client:client_id ( id, name, email, phone )',
     )
     .eq('coach_id', coachId)
     .is('class_occurrence_id', null)
@@ -65,6 +65,18 @@ const [{ data: apptRows }, occ, { data: blackouts }, { data: me }] = await Promi
     .gt('end_at', rangeStart),
   db.from('profiles').select('cal_token').eq('id', coachId).single(),
 ]);
+
+// Latest client note, shown inline so the coach sees it before the lesson.
+const clientIds = [...new Set(((apptRows ?? []) as any[]).map((b) => b.client?.id).filter(Boolean))];
+const latestNote = new Map<string, string>();
+if (clientIds.length) {
+  const { data: noteRows } = await db
+    .from('client_notes')
+    .select('client_id, body')
+    .in('client_id', clientIds)
+    .order('created_at', { ascending: false });
+  for (const n of (noteRows ?? []) as any[]) if (!latestNote.has(n.client_id)) latestNote.set(n.client_id, n.body);
+}
 
 const classOcc = occ.filter((o) => o.start_at < rangeEnd);
 const { data: rosterRows } =
@@ -199,6 +211,22 @@ const feedUrl = me ? `${SITE_URL}/cal/${me.cal_token}.ics` : '';
                               <span class="font-semibold text-ink">{k}</span>, {v === true ? 'yes' : String(v)}
                             </p>
                           ))}
+                        {r.b.client?.id && (
+                          <div class="border-t border-line pt-2">
+                            {latestNote.has(r.b.client.id) && (
+                              <p class="text-ink-soft">
+                                <span class="font-semibold text-ink">Client note</span> · {latestNote.get(r.b.client.id)}
+                              </p>
+                            )}
+                            <form method="POST" action="/api/notes" class="mt-1 flex flex-wrap items-end gap-2">
+                              <input type="hidden" name="action" value="note.add" />
+                              <input type="hidden" name="client_id" value={r.b.client.id} />
+                              <input type="hidden" name="back" value={nav({})} />
+                              <input name="body" placeholder="Add a client note…" class="field w-64 text-xs" />
+                              <button class="btn btn-quiet btn-sm">Save</button>
+                            </form>
+                          </div>
+                        )}
                         <div class="flex flex-wrap gap-2 pt-1">
                           {r.b.payment_status !== 'free' && (
                             <form method="POST" action={api}>

@@ -1,0 +1,102 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { listCoaches } from '../../lib/staff';
+import { fmtPrice, calFmt, localDay, todayStr } from '../../lib/format';
+
+const db = createSupabaseAdmin();
+const coaches = await listCoaches();
+const coachName = (id: string) => coaches.find((c) => c.id === id)?.name ?? 'Coach';
+const nowIso = new Date().toISOString();
+const sixMonthsAgo = new Date();
+sixMonthsAgo.setUTCMonth(sixMonthsAgo.getUTCMonth() - 6);
+
+const [{ data: pastRows }, { count: newClients }] = await Promise.all([
+  db
+    .from('bookings')
+    .select('start_at, coach_id, status, price_cents')
+    .in('status', ['confirmed', 'no_show'])
+    .lt('start_at', nowIso)
+    .gte('start_at', sixMonthsAgo.toISOString()),
+  db
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'client')
+    .gte('created_at', `${todayStr().slice(0, 7)}-01`),
+]);
+
+const past = (pastRows ?? []) as any[];
+const thisMonthKey = todayStr().slice(0, 7);
+
+const byMonth = new Map<string, { total: number; delivered: number; noShow: number }>();
+const byCoach = new Map<string, { total: number; delivered: number; noShow: number }>();
+for (const b of past) {
+  const monthKey = localDay(b.start_at).slice(0, 7);
+  const gm = byMonth.get(monthKey) ?? byMonth.set(monthKey, { total: 0, delivered: 0, noShow: 0 }).get(monthKey)!;
+  const gc = byCoach.get(b.coach_id) ?? byCoach.set(b.coach_id, { total: 0, delivered: 0, noShow: 0 }).get(b.coach_id)!;
+  for (const g of [gm, gc]) {
+    g.delivered += 1;
+    if (b.status === 'no_show') g.noShow += 1;
+    else g.total += b.price_cents ?? 0;
+  }
+}
+const months = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6);
+const thisMonth = byMonth.get(thisMonthKey) ?? { total: 0, delivered: 0, noShow: 0 };
+const coachRows = [...byCoach.entries()]
+  .map(([id, g]) => ({ id, ...g }))
+  .sort((a, b) => b.total - a.total);
+---
+
+<Admin title="Reports" desc="Revenue and delivery, aggregated across every coach. Last 6 months.">
+  <div class="grid gap-3 sm:grid-cols-3">
+    <div class="card p-3">
+      <p class="eyebrow">Revenue · this month</p>
+      <p class="mt-1 font-display text-xl font-bold">{fmtPrice(thisMonth.total)}</p>
+    </div>
+    <div class="card p-3">
+      <p class="eyebrow">No-show rate · this month</p>
+      <p class="mt-1 font-display text-xl font-bold">
+        {thisMonth.delivered ? `${Math.round((thisMonth.noShow / thisMonth.delivered) * 100)}%` : '—'}
+      </p>
+      <p class="text-xs text-ink-soft">{thisMonth.noShow} of {thisMonth.delivered} sessions</p>
+    </div>
+    <div class="card p-3">
+      <p class="eyebrow">New clients · this month</p>
+      <p class="mt-1 font-display text-xl font-bold">{newClients ?? 0}</p>
+    </div>
+  </div>
+
+  <p class="eyebrow mt-8">Revenue by month</p>
+  <div class="card rowlist mt-2 text-sm">
+    {months.length === 0 ? (
+      <p class="px-4 py-3 text-ink-soft">No delivered sessions in this window.</p>
+    ) : (
+      months.map(([key, g]) => (
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+          <span class="font-semibold">{calFmt(`${key}-01`, 'MMMM yyyy')}</span>
+          <span class="text-ink-soft">
+            {g.delivered} session{g.delivered === 1 ? '' : 's'}
+            {g.noShow > 0 && ` · ${g.noShow} no-show`} · <strong class="text-ink">{fmtPrice(g.total)}</strong>
+          </span>
+        </div>
+      ))
+    )}
+  </div>
+
+  <p class="eyebrow mt-8">By coach · last 6 months</p>
+  <div class="card rowlist mt-2 text-sm">
+    {coachRows.length === 0 ? (
+      <p class="px-4 py-3 text-ink-soft">Nothing yet.</p>
+    ) : (
+      coachRows.map((c) => (
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+          <span class="font-semibold">{coachName(c.id)}</span>
+          <span class="text-ink-soft">
+            {c.delivered} session{c.delivered === 1 ? '' : 's'}
+            {c.noShow > 0 && ` · ${c.noShow} no-show`} · <strong class="text-ink">{fmtPrice(c.total)}</strong>
+          </span>
+        </div>
+      ))
+    )}
+  </div>
+</Admin>

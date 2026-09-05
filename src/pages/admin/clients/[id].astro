@@ -14,7 +14,7 @@ const { data: client } = await db
   .maybeSingle();
 if (!client) return Astro.redirect('/admin/clients');
 
-const [{ data: bookingRows }, { data: passRows }] = await Promise.all([
+const [{ data: bookingRows }, { data: passRows }, { data: noteRows }] = await Promise.all([
   db
     .from('bookings')
     .select(
@@ -27,7 +27,13 @@ const [{ data: bookingRows }, { data: passRows }] = await Promise.all([
     .select('id, name, total, used, status, expires_at')
     .eq('client_id', id)
     .order('created_at', { ascending: false }),
+  db
+    .from('client_notes')
+    .select('id, body, created_at, author:author_id ( name )')
+    .eq('client_id', id)
+    .order('created_at', { ascending: false }),
 ]);
+const notes = (noteRows ?? []) as any[];
 
 const bookings = (bookingRows ?? []) as any[];
 const now = Date.now();
@@ -46,6 +52,38 @@ const label = (b: any) =>
     {client.phone && <p><span class="text-ink-soft">Phone</span> · {client.phone}</p>}
     <p><span class="text-ink-soft">Client since</span> · {fmtLong(client.created_at)}</p>
     {noShows > 0 && <p class="text-ink-soft">{noShows} no-show{noShows === 1 ? '' : 's'}</p>}
+  </div>
+
+  <p class="eyebrow mt-8">Notes</p>
+  <form method="POST" action="/api/notes" class="mt-2 flex flex-wrap items-end gap-2">
+    <input type="hidden" name="action" value="note.add" />
+    <input type="hidden" name="client_id" value={client.id} />
+    <input type="hidden" name="back" value={`/admin/clients/${client.id}`} />
+    <label class="flex-1 text-sm">
+      <span class="mb-1 block text-ink-soft">Skill level, injuries, preferences…</span>
+      <textarea name="body" required rows="2" class="field w-full" />
+    </label>
+    <button class="btn btn-sm">Add note</button>
+  </form>
+  <div class="card rowlist mt-2 text-sm">
+    {notes.length === 0 ? (
+      <p class="px-4 py-2 text-ink-soft">No notes yet.</p>
+    ) : (
+      notes.map((n) => (
+        <div class="flex flex-wrap items-start justify-between gap-2 px-4 py-2.5">
+          <span>
+            {n.body}
+            <span class="block text-xs text-ink-soft">{n.author?.name || 'Staff'} · {fmtLong(n.created_at)}</span>
+          </span>
+          <form method="POST" action="/api/notes">
+            <input type="hidden" name="action" value="note.delete" />
+            <input type="hidden" name="id" value={n.id} />
+            <input type="hidden" name="back" value={`/admin/clients/${client.id}`} />
+            <button class="btn btn-quiet btn-sm">Delete</button>
+          </form>
+        </div>
+      ))
+    )}
   </div>
 
   {passRows && passRows.length > 0 && (

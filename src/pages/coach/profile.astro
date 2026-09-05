@@ -1,0 +1,39 @@
+---
+import Coach from '../../layouts/Coach.astro';
+import { createSupabaseAdmin } from '../../lib/supabase';
+import { getStaffScope } from '../../lib/staff';
+
+const { url } = Astro;
+const scope = await getStaffScope(Astro);
+if (scope.needsPick) return Astro.redirect('/admin/staff');
+const coachId = scope.coachId!;
+
+const db = createSupabaseAdmin();
+const { data: profile } = await db.from('profiles').select('name, email, phone, bio').eq('id', coachId).single();
+
+const saved = url.searchParams.get('saved');
+const err = url.searchParams.get('error');
+---
+
+<Coach title="Profile" desc="Your name, phone, and a short bio." editingCoach={scope.isSelf ? undefined : scope.coachName}>
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
+  {saved && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Saved.</p>}
+
+  <form method="POST" action="/api/profile" class="max-w-md space-y-4">
+    <input type="hidden" name="coach_id" value={coachId} />
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Name</span>
+      <input name="name" required value={profile?.name ?? ''} class="field w-full" />
+    </label>
+    <p class="text-sm text-ink-soft">Email · {profile?.email}</p>
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Phone</span>
+      <input name="phone" value={profile?.phone ?? ''} class="field w-full" />
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Bio</span>
+      <textarea name="bio" rows="4" maxlength="600" class="field w-full">{profile?.bio ?? ''}</textarea>
+    </label>
+    <button class="btn">Save</button>
+  </form>
+</Coach>

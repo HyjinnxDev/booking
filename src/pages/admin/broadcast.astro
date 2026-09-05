@@ -1,0 +1,35 @@
+---
+import Admin from '../../layouts/Admin.astro';
+
+const sent = Astro.url.searchParams.get('sent');
+const err = Astro.url.searchParams.get('error');
+---
+
+<Admin title="Broadcast" desc="Send an announcement email to every client or every coach.">
+  {err && <p class="mb-4 border-l-2 border-red-500 bg-white px-4 py-2.5 text-sm" role="alert">{err}</p>}
+  {sent && <p class="mb-4 border-l-2 border-ball bg-white px-4 py-2.5 text-sm">Sent to {sent} recipient{sent === '1' ? '' : 's'}.</p>}
+
+  <form
+    method="POST"
+    action="/api/broadcast"
+    class="max-w-lg space-y-4"
+    onsubmit="return confirm('Send this to everyone in the chosen audience? This can\'t be undone.')"
+  >
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Audience</span>
+      <select name="audience" class="field w-full">
+        <option value="clients">All clients</option>
+        <option value="coaches">All coaches</option>
+      </select>
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Subject</span>
+      <input name="subject" required maxlength="120" class="field w-full" />
+    </label>
+    <label class="block text-sm">
+      <span class="mb-1 block text-ink-soft">Message</span>
+      <textarea name="body" required rows="6" class="field w-full" />
+    </label>
+    <button class="btn">Send broadcast</button>
+  </form>
+</Admin>
